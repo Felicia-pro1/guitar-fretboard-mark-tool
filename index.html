@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C Major Scale for Guitar | Fretboard Visualizer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <div class="control-row">
+                <div class="control-group">
+                    <h3>Note</h3>
+                    <div class="accidentals">
+                        <label><input type="radio" name="accidental" value="natural" checked> Natural</label>
+                        <label><input type="radio" name="accidental" value="sharp"> Sharp</label>
+                        <label><input type="radio" name="accidental" value="flat"> Flat</label>
+                    </div>
+                    <div class="note-buttons">
+                        <button class="note-btn" data-note="C">C</button>
+                        <button class="note-btn" data-note="D">D</button>
+                        <button class="note-btn" data-note="E">E</button>
+                        <button class="note-btn" data-note="F">F</button>
+                        <button class="note-btn" data-note="G">G</button>
+                        <button class="note-btn" data-note="A">A</button>
+                        <button class="note-btn" data-note="B">B</button>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <h3>Scale / Mode</h3>
+                    <select id="scale">
+                        <option value="major">Major</option>
+                        <option value="naturalMinor">Natural Minor</option>
+                        <option value="harmonicMinor">Harmonic Minor</option>
+                        <option value="melodicMinor">Melodic Minor</option>
+                        <option value="dorian">Dorian</option>
+                        <option value="phrygian">Phrygian</option>
+                        <option value="lydian">Lydian</option>
+                        <option value="mixolydian">Mixolydian</option>
+                        <option value="locrian">Locrian</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>MARK</h3>
+                <div class="mark-controls">
+                    <div class="color-dots" id="colorDots">
+                        <div class="color-dot active" data-color="#e53935" style="background: #e53935;"></div>
+                        <div class="color-dot" data-color="#64b5f6" style="background: #64b5f6;"></div>
+                        <div class="color-dot" data-color="#43a047" style="background: #43a047;"></div>
+                        <div class="color-dot" data-color="#ffb300" style="background: #ffb300;"></div>
+                        <div class="color-dot" data-color="#8e24aa" style="background: #8e24aa;"></div>
+                        <div class="color-dot" data-color="#fb8c00" style="background: #fb8c00;"></div>
+                        <div class="color-dot" data-color="#00897b" style="background: #00897b;"></div>
+                    </div>
+                    <button id="clearMarks" class="clear-marks-icon">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                            <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <h3>Display</h3>
+                <div class="toggle-group">
+                    <label><input type="radio" name="displayMode" value="rootNote" id="rootNote" checked> Root</label>
+                    <label><input type="radio" name="displayMode" value="allNotes" id="allNotes"> All Notes</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="scale-chords-section">
+            <h2 id="scaleName">C Major Scale</h2>
+            <div class="scale-display-mode">
+                <label><input type="radio" name="scaleMode" value="chords" checked> Chords</label>
+                <label><input type="radio" name="scaleMode" value="notes"> Notes</label>
+                <label><input type="radio" name="scaleMode" value="degrees"> Degrees</label>
+            </div>
+            <div id="scaleContent" class="chord-grid">
+                <!-- 动态内容 -->
+            </div>
+        </div>
+
+        <div class="fretboard-container">
+            <div id="fretboard"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
