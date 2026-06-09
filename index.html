@@ -45,26 +45,6 @@
             </div>
 
             <div class="control-group">
-                <h3>MARK</h3>
-                <div class="mark-controls">
-                    <div class="color-dots" id="colorDots">
-                        <div class="color-dot active" data-color="#e53935" style="background: #e53935;"></div>
-                        <div class="color-dot" data-color="#64b5f6" style="background: #64b5f6;"></div>
-                        <div class="color-dot" data-color="#43a047" style="background: #43a047;"></div>
-                        <div class="color-dot" data-color="#ffb300" style="background: #ffb300;"></div>
-                        <div class="color-dot" data-color="#8e24aa" style="background: #8e24aa;"></div>
-                        <div class="color-dot" data-color="#fb8c00" style="background: #fb8c00;"></div>
-                        <div class="color-dot" data-color="#00897b" style="background: #00897b;"></div>
-                    </div>
-                    <button id="clearMarks" class="clear-marks-icon">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-                            <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
-                        </svg>
-                    </button>
-                </div>
-            </div>
-
-            <div class="control-group">
                 <h3>Display</h3>
                 <div class="toggle-group">
                     <label><input type="radio" name="displayMode" value="rootNote" id="rootNote" checked> Root</label>
@@ -88,6 +68,47 @@
         <div class="fretboard-container">
             <div id="fretboard"></div>
         </div>
+
+        <div class="save-tabs-container">
+            <div class="tabs-header">
+                <div class="tab active" data-tab="current">当前标记</div>
+                <div class="tab" data-tab="saved">已保存</div>
+            </div>
+            
+            <div class="tabs-content">
+                <div class="tab-panel active" id="currentPanel">
+                    <div class="mark-controls">
+                        <div class="color-dots" id="colorDots">
+                            <div class="color-dot active" data-color="#6B4423" style="background: #6B4423;"></div>
+                            <div class="color-dot" data-color="#D4A76A" style="background: #D4A76A;"></div>
+                            <div class="color-dot" data-color="#8B7355" style="background: #8B7355;"></div>
+                            <div class="color-dot" data-color="#A69076" style="background: #A69076;"></div>
+                            <div class="color-dot" data-color="#E8DDD1" style="background: #E8DDD1;"></div>
+                            <div class="color-dot" data-color="#C9B896" style="background: #C9B896;"></div>
+                            <div class="color-dot" data-color="#DFD3C5" style="background: #DFD3C5;"></div>
+                        </div>
+                    </div>
+                    <div class="save-controls">
+                        <input type="text" id="saveName" placeholder="输入名称...">
+                        <input type="number" id="saveMinFret" placeholder="起始品" min="0" max="22" value="0">
+                        <span class="fret-separator">-</span>
+                        <input type="number" id="saveMaxFret" placeholder="结束品" min="0" max="22" value="22">
+                        <button id="saveButton">保存</button>
+                    </div>
+                </div>
+                
+                <div class="tab-panel" id="savedPanel">
+                    <div id="savedList">
+                        <div class="empty-state">暂无保存的标记</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="context-menu" id="contextMenu">
+        <div class="context-item" id="ctxDelete">删除此标记</div>
+        <div class="context-item" id="ctxCancel">取消</div>
     </div>
 
     <script src="script.js"></script>

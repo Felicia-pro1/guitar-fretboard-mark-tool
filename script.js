@@ -72,7 +72,8 @@ let currentState = {
     markMode: true,
     selectedColor: '#e53935',
     markedNotes: {},
-    scaleDisplayMode: 'chords'
+    scaleDisplayMode: 'chords',
+    editingIndex: null
 };
 
 function getNoteIndex(note) {
@@ -457,52 +458,467 @@ function updateNoteButtons() {
     });
 }
 
+let savedMarks = loadSavedMarks();
+let contextMenuTarget = null;
+
+function loadSavedMarks() {
+    return getDefaultMarks();
+}
+
+function getNoteAtPosition(stringIndex, fret) {
+    const stringNotes = ['E', 'A', 'D', 'G', 'B', 'E'];
+    const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    
+    const openNote = stringNotes[stringIndex];
+    const openIndex = noteNames.indexOf(openNote);
+    const noteIndex = (openIndex + fret) % 12;
+    
+    return noteNames[noteIndex];
+}
+
+function getDefaultMarks() {
+    return [
+        {
+            name: 'C大三和弦',
+            minFret: 0,
+            maxFret: 3,
+            marks: {
+                '5_0': '#6B4423',
+                '4_2': '#D4A76A',
+                '3_3': '#8B7355'
+            },
+            rootNote: 'C',
+            scale: 'major',
+            tuning: 'standard',
+            createdAt: Date.now() - 86400000
+        },
+        {
+            name: 'G7属七和弦',
+            minFret: 3,
+            maxFret: 5,
+            marks: {
+                '5_3': '#6B4423',
+                '4_3': '#D4A76A',
+                '3_4': '#8B7355',
+                '2_5': '#A69076'
+            },
+            rootNote: 'G',
+            scale: 'major',
+            tuning: 'standard',
+            createdAt: Date.now() - 72000000
+        },
+        {
+            name: 'Am小和弦',
+            minFret: 0,
+            maxFret: 2,
+            marks: {
+                '5_0': '#6B4423',
+                '3_2': '#D4A76A',
+                '2_2': '#8B7355'
+            },
+            rootNote: 'A',
+            scale: 'naturalMinor',
+            tuning: 'standard',
+            createdAt: Date.now() - 36000000
+        }
+    ];
+}
+
+function saveSavedMarks() {
+    localStorage.setItem('guitarFretboardMarks', JSON.stringify(savedMarks));
+}
+
+function buildMiniFretboard(mark) {
+    const stringNotes = ['E', 'A', 'D', 'G', 'B', 'E'];
+    const fretCount = mark.maxFret - mark.minFret + 1;
+    const htmlParts = [];
+    
+    htmlParts.push('<div class="mini-chord-diagram"><div class="mini-fretboard">');
+    
+    for (let stringIndex = 5; stringIndex >= 0; stringIndex--) {
+        const openNote = stringNotes[stringIndex];
+        const openKey = stringIndex + '_0';
+        const hasOpenMark = mark.marks[openKey];
+        
+        htmlParts.push('<div class="mini-string-row">');
+        htmlParts.push('<div class="mini-open-note">');
+        if (hasOpenMark) {
+            htmlParts.push('<div class="mini-open-marker" style="background: ', mark.marks[openKey], ';">', openNote, '</div>');
+        } else {
+            htmlParts.push('<span class="mini-open-label">', openNote, '</span>');
+        }
+        htmlParts.push('</div>');
+        htmlParts.push('<div class="mini-fretboard-area">');
+        htmlParts.push('<div class="mini-fret-line nut-line"></div>');
+        
+        for (let i = 0; i < fretCount; i++) {
+            const fret = mark.minFret + i;
+            const key = stringIndex + '_' + fret;
+            const isMarked = mark.marks[key];
+            
+            htmlParts.push('<div class="mini-fret-box">');
+            htmlParts.push('<div class="mini-fret-line"></div>');
+            if (isMarked) {
+                htmlParts.push('<div class="mini-note-marker" style="background: ', mark.marks[key], ';">', getNoteAtPosition(stringIndex, fret), '</div>');
+            }
+            if (i === 0 && fret > 0) {
+                htmlParts.push('<div class="mini-fret-num">', fret, '</div>');
+            }
+            htmlParts.push('</div>');
+        }
+        
+        htmlParts.push('</div></div>');
+    }
+    
+    htmlParts.push('<div class="mini-fret-numbers">');
+    for (let i = 0; i < fretCount; i++) {
+        const fret = mark.minFret + i;
+        htmlParts.push('<div class="mini-fret-bottom-num">', fret, '</div>');
+    }
+    htmlParts.push('</div></div></div>');
+    
+    return htmlParts.join('');
+}
+
+function renderSavedList() {
+    const savedList = document.getElementById('savedList');
+    
+    if (savedMarks.length === 0) {
+        savedList.innerHTML = '<div class="empty-state">暂无保存的标记</div>';
+        return;
+    }
+    
+    const scaleNames = {
+        major: '大调',
+        naturalMinor: '自然小调',
+        harmonicMinor: '和声小调',
+        melodicMinor: '旋律小调',
+        pentatonicMajor: '大调五声音阶',
+        pentatonicMinor: '小调五声音阶',
+        blues: '布鲁斯音阶',
+        dorian: '多利亚调',
+        phrygian: '弗里几亚调',
+        lydian: '利底亚调',
+        mixolydian: '混合利底亚调',
+        locrian: '洛克里亚调'
+    };
+    
+    const items = [];
+    for (let i = 0; i < savedMarks.length; i++) {
+        const mark = savedMarks[i];
+        const scaleName = scaleNames[mark.scale] || mark.scale;
+        const miniFretboard = buildMiniFretboard(mark);
+        
+        items.push(
+            '<div class="saved-item" data-index="', i, '">',
+            '<div class="saved-item-header">',
+            '<div class="saved-item-title-row">',
+            '<button class="expand-icon" onclick="toggleExpand(', i, ')">',
+            '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
+            '<path d="M6 9l6 6 6-6"/>',
+            '</svg>',
+            '</button>',
+            '<div class="saved-item-name">', escapeHtml(mark.name), '</div>',
+            '<div class="saved-item-scale">', mark.rootNote, scaleName, '</div>',
+            '</div>',
+            '<div class="saved-item-frets">第 ', mark.minFret, ' - ', mark.maxFret, ' 品</div>',
+            '</div>',
+            '<div class="saved-item-detail" id="detail-', i, '" style="display: none;">',
+            miniFretboard,
+            '<div class="saved-item-actions">',
+            '<button class="saved-item-btn view" onclick="viewSavedMark(', i, ')">预览</button>',
+            '<button class="saved-item-btn edit" onclick="editSavedMark(', i, ')">编辑</button>',
+            '<button class="saved-item-btn delete" onclick="confirmDelete(', i, ')">删除</button>',
+            '</div>',
+            '</div>',
+            '</div>'
+        );
+    }
+    
+    savedList.innerHTML = items.join('');
+}
+
+function viewSavedMark(index) {
+    const mark = savedMarks[index];
+    currentState.markedNotes = { ...mark.marks };
+    currentState.rootNote = mark.rootNote;
+    currentState.scale = mark.scale;
+    
+    if (mark.tuning) {
+        currentState.tuning = mark.tuning;
+    }
+    
+    if (document.getElementById('scale')) {
+        document.getElementById('scale').value = mark.scale;
+    }
+    
+    document.querySelectorAll('.note-btn').forEach(btn => btn.classList.remove('active'));
+    const noteBtn = document.querySelector(`.note-btn[data-note="${mark.rootNote}"]`);
+    if (noteBtn) {
+        noteBtn.classList.add('active');
+    }
+    
+    renderFretboard();
+    updateScaleInfo();
+}
+
+function editSavedMark(index) {
+    const mark = savedMarks[index];
+    currentState.markedNotes = { ...mark.marks };
+    currentState.editingIndex = index;
+    document.getElementById('saveName').value = mark.name;
+    document.getElementById('saveMinFret').value = mark.minFret;
+    document.getElementById('saveMaxFret').value = mark.maxFret;
+    document.querySelector('.tab[data-tab="current"]').click();
+    const saveButton = document.getElementById('saveButton');
+    saveButton.textContent = '保存修改';
+}
+
+function confirmDelete(index) {
+    if (confirm(`确定要删除「${savedMarks[index].name}」吗？`)) {
+        deleteSavedMark(index);
+    }
+}
+
+function toggleExpand(index) {
+    const detail = document.getElementById(`detail-${index}`);
+    const icon = document.querySelector(`.saved-item[data-index="${index}"] .expand-icon svg`);
+    if (detail.style.display === 'none') {
+        detail.style.display = 'block';
+        icon.style.transform = 'rotate(180deg)';
+    } else {
+        detail.style.display = 'none';
+        icon.style.transform = 'rotate(0deg)';
+    }
+}
+
+function escapeHtml(str) {
+    return str.replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+}
+
+function saveCurrentMarks() {
+    const name = document.getElementById('saveName').value.trim();
+    const minFret = parseInt(document.getElementById('saveMinFret').value) || 0;
+    const maxFret = parseInt(document.getElementById('saveMaxFret').value) || 22;
+    
+    if (!name) {
+        alert('请输入名称');
+        return;
+    }
+    
+    if (minFret > maxFret) {
+        alert('起始品不能大于结束品');
+        return;
+    }
+    
+    const filteredMarks = {};
+    Object.keys(currentState.markedNotes).forEach(key => {
+        const parts = key.split('_');
+        const fret = parseInt(parts[1]);
+        if (fret >= minFret && fret <= maxFret) {
+            filteredMarks[key] = currentState.markedNotes[key];
+        }
+    });
+    
+    if (Object.keys(filteredMarks).length === 0) {
+        alert('没有标记可保存');
+        return;
+    }
+    
+    const markData = {
+        name,
+        minFret,
+        maxFret,
+        marks: filteredMarks,
+        rootNote: currentState.rootNote,
+        scale: currentState.scale,
+        tuning: currentState.tuning,
+        createdAt: Date.now()
+    };
+    
+    if (currentState.editingIndex !== null) {
+        savedMarks[currentState.editingIndex] = markData;
+        alert('修改成功！');
+    } else {
+        savedMarks.push(markData);
+        alert('保存成功！');
+    }
+    
+    saveSavedMarks();
+    renderSavedList();
+    
+    document.getElementById('saveName').value = '';
+    document.getElementById('saveMinFret').value = '0';
+    document.getElementById('saveMaxFret').value = '22';
+    
+    currentState.editingIndex = null;
+    document.getElementById('saveButton').textContent = '保存';
+}
+
+function renameSavedMark(index) {
+    const newName = prompt('输入新名称:', savedMarks[index].name);
+    if (newName && newName.trim()) {
+        savedMarks[index].name = newName.trim();
+        saveSavedMarks();
+        renderSavedList();
+    }
+}
+
+function deleteSavedMark(index) {
+    if (confirm('确定要删除这个保存的标记吗？')) {
+        savedMarks.splice(index, 1);
+        saveSavedMarks();
+        renderSavedList();
+    }
+}
+
+function initTabListeners() {
+    const tabs = document.querySelectorAll('.tab');
+    const panels = document.querySelectorAll('.tab-panel');
+    
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            panels.forEach(p => p.classList.remove('active'));
+            
+            tab.classList.add('active');
+            document.getElementById(`${tab.dataset.tab}Panel`).classList.add('active');
+            
+            if (tab.dataset.tab === 'saved') {
+                renderSavedList();
+            }
+        });
+    });
+}
+
+function initContextMenu() {
+    const contextMenu = document.getElementById('contextMenu');
+    
+    document.addEventListener('click', (e) => {
+        contextMenu.classList.remove('show');
+    });
+    
+    document.addEventListener('contextmenu', (e) => {
+        const noteMarker = e.target.closest('.note-marker.marked');
+        if (noteMarker) {
+            e.preventDefault();
+            contextMenuTarget = noteMarker;
+            contextMenu.style.left = `${e.clientX}px`;
+            contextMenu.style.top = `${e.clientY}px`;
+            contextMenu.classList.add('show');
+        }
+    });
+    
+    document.getElementById('ctxDelete').addEventListener('click', () => {
+        if (contextMenuTarget) {
+            const string = contextMenuTarget.dataset.stringIndex;
+            const fret = contextMenuTarget.dataset.fret;
+            const key = `${string}_${fret}`;
+            delete currentState.markedNotes[key];
+            renderFretboard();
+        }
+        document.getElementById('contextMenu').classList.remove('show');
+        contextMenuTarget = null;
+    });
+    
+    document.getElementById('ctxCancel').addEventListener('click', () => {
+        document.getElementById('contextMenu').classList.remove('show');
+        contextMenuTarget = null;
+    });
+}
+
 function initEventListeners() {
-    document.querySelectorAll('.note-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.note-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            currentState.rootNote = btn.dataset.actualNote || btn.dataset.note;
-            currentState.selectedChord = null;
+    const noteButtons = document.querySelectorAll('.note-btn');
+    const scaleSelect = document.getElementById('scale');
+    const tuningSelect = document.getElementById('tuning');
+    const accidentalRadios = document.querySelectorAll('input[name="accidental"]');
+    const harmonyRadios = document.querySelectorAll('input[name="harmony"]');
+    const labelRadios = document.querySelectorAll('input[name="labels"]');
+    const displayModeRadios = document.querySelectorAll('input[name="displayMode"]');
+    const minFretSlider = document.getElementById('minFret');
+    const maxFretSlider = document.getElementById('maxFret');
+    const fretRangeDisplay = document.getElementById('fretRangeDisplay');
+
+    noteButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            noteButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            currentState.rootNote = button.dataset.note;
             renderFretboard();
             updateScaleInfo();
         });
     });
-    
-    document.querySelector('.note-btn[data-note="C"]').classList.add('active');
-    document.querySelector('.note-btn[data-note="C"]').dataset.actualNote = 'C';
-    
-    document.querySelectorAll('input[name="accidental"]').forEach(radio => {
-        radio.addEventListener('change', () => {
-            currentState.accidental = radio.value;
-            updateNoteButtons();
-            renderFretboard();
-            updateScaleInfo();
-        });
-    });
-    
-    document.getElementById('scale').addEventListener('change', (e) => {
-        currentState.scale = e.target.value;
-        currentState.selectedChord = null;
+
+    scaleSelect.addEventListener('change', () => {
+        currentState.scale = scaleSelect.value;
         renderFretboard();
         updateScaleInfo();
     });
-    
-    document.querySelectorAll('input[name="displayMode"]').forEach(radio => {
+
+    if (tuningSelect) {
+        tuningSelect.addEventListener('change', () => {
+            currentState.tuning = tuningSelect.value;
+            renderFretboard();
+        });
+    }
+
+    accidentalRadios.forEach(radio => {
         radio.addEventListener('change', () => {
-            if (radio.value === 'allNotes') {
-                currentState.allNotes = true;
-                currentState.rootNoteOnly = false;
-            } else {
-                currentState.allNotes = false;
-                currentState.rootNoteOnly = true;
-            }
+            currentState.accidental = radio.value;
+            renderFretboard();
+            updateScaleInfo();
+        });
+    });
+
+    harmonyRadios.forEach(radio => {
+        radio.addEventListener('change', () => {
+            currentState.harmony = radio.value;
             renderFretboard();
         });
     });
-    
+
+    labelRadios.forEach(radio => {
+        radio.addEventListener('change', () => {
+            currentState.labels = radio.value;
+            renderFretboard();
+        });
+    });
+
+    displayModeRadios.forEach(radio => {
+        radio.addEventListener('change', () => {
+            currentState.allNotes = radio.value === 'allNotes';
+            currentState.rootNoteOnly = radio.value === 'rootNote';
+            renderFretboard();
+        });
+    });
+
+    minFretSlider?.addEventListener('input', () => {
+        currentState.minFret = parseInt(minFretSlider.value);
+        if (currentState.minFret > currentState.maxFret) {
+            currentState.maxFret = currentState.minFret;
+            maxFretSlider.value = currentState.minFret;
+        }
+        fretRangeDisplay.textContent = `${currentState.minFret} - ${currentState.maxFret}`;
+        renderFretboard();
+    });
+
+    maxFretSlider?.addEventListener('input', () => {
+        currentState.maxFret = parseInt(maxFretSlider.value);
+        if (currentState.maxFret < currentState.minFret) {
+            currentState.minFret = currentState.maxFret;
+            minFretSlider.value = currentState.maxFret;
+        }
+        fretRangeDisplay.textContent = `${currentState.minFret} - ${currentState.maxFret}`;
+        renderFretboard();
+    });
+
     const colorDots = document.querySelectorAll('.color-dot');
-    const clearMarks = document.getElementById('clearMarks');
     
     colorDots.forEach(dot => {
         dot.addEventListener('click', () => {
@@ -511,12 +927,7 @@ function initEventListeners() {
             currentState.selectedColor = dot.dataset.color;
         });
     });
-    
-    clearMarks.addEventListener('click', () => {
-        currentState.markedNotes = {};
-        renderFretboard();
-    });
-    
+
     document.querySelectorAll('input[name="scaleMode"]').forEach(radio => {
         radio.addEventListener('change', () => {
             currentState.scaleDisplayMode = radio.value;
@@ -531,6 +942,9 @@ function initEventListeners() {
             updateScaleInfo();
         });
     });
+    
+    initTabListeners();
+    initContextMenu();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
