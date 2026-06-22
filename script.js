@@ -708,12 +708,12 @@ function saveCurrentMarks() {
     const maxFret = parseInt(document.getElementById('saveMaxFret').value) || 22;
     
     if (!name) {
-        alert('请输入名称');
+        showToast('请输入名称', 'error');
         return;
     }
     
     if (minFret > maxFret) {
-        alert('起始品不能大于结束品');
+        showToast('起始品不能大于结束品', 'error');
         return;
     }
     
@@ -727,7 +727,7 @@ function saveCurrentMarks() {
     });
     
     if (Object.keys(filteredMarks).length === 0) {
-        alert('没有标记可保存');
+        showToast('没有标记可保存', 'error');
         return;
     }
     
@@ -744,14 +744,13 @@ function saveCurrentMarks() {
     
     if (currentState.editingIndex !== null) {
         savedMarks[currentState.editingIndex] = markData;
-        alert('修改成功！');
+        showToast('修改成功！', 'success');
     } else {
         savedMarks.push(markData);
-        alert('保存成功！');
+        showToast('保存成功！', 'success');
     }
     
     saveSavedMarks();
-    renderSavedList();
     
     document.getElementById('saveName').value = '';
     document.getElementById('saveMinFret').value = '0';
@@ -759,6 +758,22 @@ function saveCurrentMarks() {
     
     currentState.editingIndex = null;
     document.getElementById('saveButton').textContent = '保存';
+}
+
+function showToast(message, type = 'success') {
+    const existingToast = document.querySelector('.toast-notification');
+    if (existingToast) {
+        existingToast.remove();
+    }
+    
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification toast-' + type;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.remove();
+    }, 2000);
 }
 
 function renameSavedMark(index) {
@@ -942,6 +957,8 @@ function initEventListeners() {
             updateScaleInfo();
         });
     });
+    
+    document.getElementById('saveButton').addEventListener('click', saveCurrentMarks);
     
     initTabListeners();
     initContextMenu();

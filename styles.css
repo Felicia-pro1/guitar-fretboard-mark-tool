@@ -1094,3 +1094,38 @@ input[type="checkbox"], input[type="radio"] {
         justify-content: flex-end;
     }
 }
+
+.toast-notification {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 15px 30px;
+    border-radius: 12px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    box-shadow: 0 4px 20px rgba(107, 68, 35, 0.3);
+    z-index: 10000;
+    animation: toastFadeIn 0.3s ease;
+}
+
+.toast-success {
+    background: rgba(107, 68, 35, 0.95);
+    color: #FFFFFF;
+}
+
+.toast-error {
+    background: rgba(205, 133, 63, 0.95);
+    color: #FFFFFF;
+}
+
+@keyframes toastFadeIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
