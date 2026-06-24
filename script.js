@@ -520,6 +520,31 @@ let savedMarks = loadSavedMarks();
 let contextMenuTarget = null;
 
 function loadSavedMarks() {
+    try {
+        const saved = localStorage.getItem('guitarFretboardMarks');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                const dataVersion = localStorage.getItem('guitarFretboardVersion') || '1.0';
+                const currentVersion = '1.1';
+                
+                if (dataVersion !== currentVersion) {
+                    parsed.forEach(mark => {
+                        if (!mark.rootNote) mark.rootNote = 'C';
+                        if (!mark.scale) mark.scale = 'major';
+                        if (!mark.tuning) mark.tuning = 'standard';
+                        if (!mark.createdAt) mark.createdAt = Date.now();
+                    });
+                    localStorage.setItem('guitarFretboardVersion', currentVersion);
+                    saveSavedMarks();
+                }
+                return parsed;
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load saved marks:', e);
+    }
+    localStorage.setItem('guitarFretboardVersion', '1.1');
     return getDefaultMarks();
 }
 
