@@ -415,6 +415,54 @@ select:focus, button:focus {
     color: #FFFFFF;
 }
 
+.seventh-toggle {
+    display: flex;
+    align-items: center;
+    margin-left: 15px;
+    gap: 8px;
+}
+
+.seventh-toggle input[type="checkbox"] {
+    display: none;
+}
+
+.seventh-toggle .toggle-track {
+    width: 48px;
+    height: 26px;
+    background: #E8DDD1;
+    border-radius: 13px;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.3s;
+}
+
+.seventh-toggle .toggle-track::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    background: #FFFFFF;
+    border-radius: 50%;
+    top: 3px;
+    left: 3px;
+    transition: transform 0.3s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.seventh-toggle input[type="checkbox"]:checked + label.toggle-track {
+    background: #6B4423;
+}
+
+.seventh-toggle input[type="checkbox"]:checked + label.toggle-track::after {
+    transform: translateX(22px);
+}
+
+.seventh-toggle .toggle-label {
+    color: #A69076;
+    font-size: 0.9rem;
+    user-select: none;
+}
+
 .chord-grid {
     display: flex;
     justify-content: center;
@@ -518,6 +566,32 @@ footer a:hover {
 .color-dot.active {
     border: 3px solid #6B4423;
     transform: scale(1.1);
+}
+
+.mark-controls-row {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.clear-btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: none;
+    background: #E8DDD1;
+    color: #6B4423;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.clear-btn:hover {
+    background: #D4C9B8;
+}
+
+.clear-btn:active {
+    transform: scale(0.98);
 }
 
 .clear-marks-icon {
@@ -918,40 +992,35 @@ input[type="checkbox"], input[type="radio"] {
 .mini-fretboard {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
+    position: relative;
+    padding-left: 0;
+}
+
+.mini-fretboard:not(.starts-at-zero)::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: #D4AF37;
 }
 
 .mini-string-row {
     display: flex;
-    align-items: center;
-    width: 100%;
-}
-
-.mini-open-note {
-    width: 45px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding-right: 8px;
-}
-
-.mini-open-label {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #8B7355;
-}
-
-.mini-open-marker {
-    width: 32px;
     height: 32px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #FFFFFF;
-    box-shadow: 0 0 12px rgba(107, 68, 35, 0.3);
+    position: relative;
+}
+
+.mini-string-row::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: #8B7355;
+    transform: translateY(-50%);
 }
 
 .mini-fretboard-area {
@@ -959,18 +1028,20 @@ input[type="checkbox"], input[type="radio"] {
     display: flex;
     position: relative;
     min-width: 200px;
+    height: 100%;
 }
 
 .mini-fret-box {
     flex: 1;
-    height: 40px;
+    height: 100%;
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-.mini-fret-line {
+.mini-fret-box::after {
+    content: '';
     position: absolute;
     top: 0;
     bottom: 0;
@@ -979,48 +1050,43 @@ input[type="checkbox"], input[type="radio"] {
     background: #DFD3C5;
 }
 
-.mini-fret-line.nut-line {
-    right: auto;
-    left: 0;
+.mini-fret-box:last-child::after {
+    display: none;
+}
+
+.mini-fretboard.starts-at-zero .mini-fret-box:first-child::after {
     width: 4px;
     background: #D4AF37;
 }
 
 .mini-note-marker {
-    width: 36px;
-    height: 36px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.9rem;
+    font-size: 0.7rem;
     font-weight: 600;
     color: #FFFFFF;
-    box-shadow: 0 0 15px rgba(107, 68, 35, 0.4);
+    box-shadow: 0 0 10px rgba(107, 68, 35, 0.3);
     z-index: 2;
-}
-
-.mini-fret-num {
-    position: absolute;
-    top: -2px;
-    left: 2px;
-    font-size: 0.7rem;
-    color: #A69076;
-    font-weight: 500;
+    position: relative;
 }
 
 .mini-fret-numbers {
     display: flex;
-    width: calc(100% - 45px);
-    padding-left: 45px;
-    margin-top: 8px;
+    width: 100%;
+    margin-top: 5px;
+    margin-left: 0;
+    padding-left: 0;
 }
 
 .mini-fret-bottom-num {
     flex: 1;
     text-align: center;
-    font-size: 0.8rem;
-    color: #A69076;
+    font-size: 0.75rem;
+    color: #8B7355;
     font-weight: 500;
 }
 

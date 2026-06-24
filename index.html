@@ -13,9 +13,9 @@
                 <div class="control-group">
                     <h3>Note</h3>
                     <div class="accidentals">
-                        <label><input type="radio" name="accidental" value="natural" checked> Natural</label>
-                        <label><input type="radio" name="accidental" value="sharp"> Sharp</label>
-                        <label><input type="radio" name="accidental" value="flat"> Flat</label>
+                        <label><input type="radio" name="accidental" value="natural" checked> ♮</label>
+                        <label><input type="radio" name="accidental" value="sharp"> ♯</label>
+                        <label><input type="radio" name="accidental" value="flat"> ♭</label>
                     </div>
                     <div class="note-buttons">
                         <button class="note-btn" data-note="C">C</button>
@@ -59,6 +59,11 @@
                 <label><input type="radio" name="scaleMode" value="chords" checked> Chords</label>
                 <label><input type="radio" name="scaleMode" value="notes"> Notes</label>
                 <label><input type="radio" name="scaleMode" value="degrees"> Degrees</label>
+                <div class="seventh-toggle">
+                    <input type="checkbox" id="seventhMode">
+                    <label class="toggle-track" for="seventhMode"></label>
+                    <span class="toggle-label">Seventh</span>
+                </div>
             </div>
             <div id="scaleContent" class="chord-grid">
                 <!-- 动态内容 -->
@@ -78,14 +83,15 @@
             <div class="tabs-content">
                 <div class="tab-panel active" id="currentPanel">
                     <div class="mark-controls">
-                        <div class="color-dots" id="colorDots">
-                            <div class="color-dot active" data-color="#6B4423" style="background: #6B4423;"></div>
-                            <div class="color-dot" data-color="#D4A76A" style="background: #D4A76A;"></div>
-                            <div class="color-dot" data-color="#8B7355" style="background: #8B7355;"></div>
-                            <div class="color-dot" data-color="#A69076" style="background: #A69076;"></div>
-                            <div class="color-dot" data-color="#E8DDD1" style="background: #E8DDD1;"></div>
-                            <div class="color-dot" data-color="#C9B896" style="background: #C9B896;"></div>
-                            <div class="color-dot" data-color="#DFD3C5" style="background: #DFD3C5;"></div>
+                        <div class="mark-controls-row">
+                            <div class="color-dots" id="colorDots">
+                                <div class="color-dot active" data-color="#FFB6C1" style="background: #FFB6C1;"></div>
+                                <div class="color-dot" data-color="#87CEEB" style="background: #87CEEB;"></div>
+                                <div class="color-dot" data-color="#FFA500" style="background: #FFA500;"></div>
+                                <div class="color-dot" data-color="#4169E1" style="background: #4169E1;"></div>
+                                <div class="color-dot" data-color="#9370DB" style="background: #9370DB;"></div>
+                            </div>
+                            <button id="clearButton" class="clear-btn">清空</button>
                         </div>
                     </div>
                     <div class="save-controls">

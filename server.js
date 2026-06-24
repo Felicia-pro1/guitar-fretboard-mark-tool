@@ -2,7 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const PORT = 8080;
+let PORT = 8080;
 
 const MIME_TYPES = {
   '.html': 'text/html',
@@ -17,8 +17,6 @@ const MIME_TYPES = {
 };
 
 const server = http.createServer((req, res) => {
-  console.log(`${req.method} ${req.url}`);
-
   let filePath = '.' + req.url;
   if (filePath === './') {
     filePath = './index.html';
@@ -41,6 +39,18 @@ const server = http.createServer((req, res) => {
       res.end(content, 'utf-8');
     }
   });
+});
+
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE') {
+    console.log(`Port ${PORT} is already in use, trying port ${PORT + 1}...`);
+    PORT++;
+    server.listen(PORT, '127.0.0.1', () => {
+      console.log(`Server running at http://localhost:${PORT}/`);
+    });
+  } else {
+    console.log('Server error:', e.code);
+  }
 });
 
 server.listen(PORT, '127.0.0.1', () => {

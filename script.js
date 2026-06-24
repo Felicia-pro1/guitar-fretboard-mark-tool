@@ -35,7 +35,13 @@ const CHORD_TYPES = {
     major: [0, 4, 7],
     minor: [0, 3, 7],
     diminished: [0, 3, 6],
-    augmented: [0, 4, 8]
+    augmented: [0, 4, 8],
+    maj7: [0, 4, 7, 11],
+    min7: [0, 3, 7, 10],
+    dom7: [0, 4, 7, 10],
+    min7b5: [0, 3, 6, 9],
+    maj7s5: [0, 4, 8, 11],
+    dim7: [0, 3, 6, 9]
 };
 
 const DIATONIC_CHORDS = {
@@ -50,11 +56,29 @@ const DIATONIC_CHORDS = {
     locrian: ['diminished', 'major', 'minor', 'minor', 'major', 'major', 'minor']
 };
 
+const DIATONIC_SEVENTH_CHORDS = {
+    major: ['maj7', 'min7', 'min7', 'maj7', 'dom7', 'min7', 'min7b5'],
+    naturalMinor: ['min7', 'min7b5', 'maj7', 'min7', 'min7', 'maj7', 'dom7'],
+    harmonicMinor: ['min7', 'min7b5', 'maj7s5', 'min7', 'dom7', 'maj7', 'dim7'],
+    melodicMinor: ['min7', 'min7', 'maj7s5', 'dom7', 'dom7', 'dim7', 'min7b5'],
+    dorian: ['min7', 'min7', 'maj7', 'dom7', 'min7', 'min7b5', 'maj7'],
+    phrygian: ['min7', 'maj7', 'dom7', 'min7', 'min7b5', 'maj7', 'min7'],
+    lydian: ['maj7', 'maj7', 'min7', 'min7b5', 'dom7', 'min7', 'min7'],
+    mixolydian: ['dom7', 'min7', 'min7b5', 'maj7', 'dom7', 'min7', 'min7'],
+    locrian: ['min7b5', 'maj7', 'min7', 'min7', 'maj7', 'dom7', 'min7']
+};
+
 const CHORD_SYMBOLS = {
     major: '',
     minor: 'm',
     diminished: 'dim',
-    augmented: 'aug'
+    augmented: 'aug',
+    maj7: 'maj7',
+    min7: 'm7',
+    dom7: '7',
+    min7b5: 'm7♭5',
+    maj7s5: 'maj7#5',
+    dim7: 'dim7'
 };
 
 let currentState = {
@@ -73,6 +97,7 @@ let currentState = {
     selectedColor: '#e53935',
     markedNotes: {},
     scaleDisplayMode: 'chords',
+    seventhMode: false,
     editingIndex: null
 };
 
@@ -193,6 +218,15 @@ function renderFretboard() {
             chordRootIndex = getNoteIndex(chord.note);
             displayRoot = true;
             isChordMode = true;
+            
+            // Seventh mode: add 7th note
+            if (currentState.seventhMode) {
+                const seventhChords = DIATONIC_SEVENTH_CHORDS[currentState.scale] || DIATONIC_SEVENTH_CHORDS.major;
+                const seventhType = seventhChords[currentState.selectedChord - 1];
+                const seventhIntervals = CHORD_TYPES[seventhType];
+                const chordRootIdx = getNoteIndex(chord.note);
+                displayNotes = seventhIntervals.map(interval => (chordRootIdx + interval) % 12);
+            }
         }
     } else {
         displayNotes = scaleNotes;
@@ -334,43 +368,80 @@ function updateScaleInfo() {
     const rootName = getNoteName(getNoteIndex(currentState.rootNote), currentState.accidental);
     scaleName.textContent = `${rootName} ${SCALE_NAMES[currentState.scale]} Scale`;
     
-    const chords = getDiatonicChords(currentState.rootNote, currentState.scale);
     const scaleNotes = getScaleNotes(currentState.rootNote, currentState.scale);
     
-    let html = '';
-    chords.forEach((chord, index) => {
-        const isDominant = (index === 4);
-        const dominantClass = isDominant ? 'dominant' : '';
-        const isSelected = currentState.selectedChord === (index + 1);
-        const selectedClass = isSelected ? 'selected' : '';
+    if (currentState.seventhMode) {
+        // Seventh Chords Mode
+        const seventhChords = DIATONIC_SEVENTH_CHORDS[currentState.scale] || DIATONIC_SEVENTH_CHORDS.major;
+        let html = '';
         
-        html += `<div class="chord-column ${dominantClass} ${selectedClass}" data-chord="${index + 1}">`;
-        html += `<div class="chord-degree">${getRomanNumeral(index + 1, chord.type)}</div>`;
-        html += `<div class="chord-name">${chord.note}${getChordSymbol(chord.type)}</div>`;
+        seventhChords.forEach((chordType, index) => {
+            const noteIndex = scaleNotes[index];
+            const noteName = getNoteName(noteIndex, currentState.accidental, index + 1);
+            const chordSymbol = getChordSymbol(chordType);
+            const intervals = CHORD_TYPES[chordType] || CHORD_TYPES.major;
+            
+            html += `<div class="chord-column" data-chord="${index + 1}">`;
+            html += `<div class="chord-degree">${getRomanNumeral(index + 1, chordType)}</div>`;
+            html += `<div class="chord-name">${noteName}${chordSymbol}</div>`;
+            
+            if (currentState.scaleDisplayMode === 'notes') {
+                const chordNotes = intervals.map(interval => (noteIndex + interval) % 12).reverse();
+                chordNotes.forEach(cn => {
+                    html += `<div class="chord-note">${getNoteName(cn, currentState.accidental)}</div>`;
+                });
+            } else if (currentState.scaleDisplayMode === 'degrees') {
+                const chordNotes = intervals.map(interval => (noteIndex + interval) % 12).reverse();
+                const rootIdx = getNoteIndex(currentState.rootNote);
+                chordNotes.forEach(cn => {
+                    html += `<div class="chord-degree-note">${getDegreeWithAccidental(cn, scaleNotes, rootIdx)}</div>`;
+                });
+            }
+            
+            html += '</div>';
+        });
         
-        if (currentState.scaleDisplayMode === 'notes') {
-            const notes = chord.notes;
-            const degrees = [
-                (index + 4) % 7 + 1,
-                (index + 2) % 7 + 1,
-                index + 1
-            ];
-            html += `<div class="chord-note">${getNoteName(notes[2], currentState.accidental, degrees[0])}</div>`;
-            html += `<div class="chord-note">${getNoteName(notes[1], currentState.accidental, degrees[1])}</div>`;
-            html += `<div class="chord-note">${getNoteName(notes[0], currentState.accidental, degrees[2])}</div>`;
-        } else if (currentState.scaleDisplayMode === 'degrees') {
-            const notes = chord.notes;
-            const rootIndex = getNoteIndex(currentState.rootNote);
-            html += `<div class="chord-degree-note">${getDegreeWithAccidental(notes[2], scaleNotes, rootIndex)}</div>`;
-            html += `<div class="chord-degree-note">${getDegreeWithAccidental(notes[1], scaleNotes, rootIndex)}</div>`;
-            html += `<div class="chord-degree-note">${getDegreeWithAccidental(notes[0], scaleNotes, rootIndex)}</div>`;
-        }
+        scaleContent.innerHTML = html;
+    } else {
+        // Triad Chords Mode
+        const chords = getDiatonicChords(currentState.rootNote, currentState.scale);
         
-        html += '</div>';
-    });
+        let html = '';
+        chords.forEach((chord, index) => {
+            const isDominant = (index === 4);
+            const dominantClass = isDominant ? 'dominant' : '';
+            const isSelected = currentState.selectedChord === (index + 1);
+            const selectedClass = isSelected ? 'selected' : '';
+            
+            html += `<div class="chord-column ${dominantClass} ${selectedClass}" data-chord="${index + 1}">`;
+            html += `<div class="chord-degree">${getRomanNumeral(index + 1, chord.type)}</div>`;
+            html += `<div class="chord-name">${chord.note}${getChordSymbol(chord.type)}</div>`;
+            
+            if (currentState.scaleDisplayMode === 'notes') {
+                const notes = chord.notes;
+                const degrees = [
+                    (index + 4) % 7 + 1,
+                    (index + 2) % 7 + 1,
+                    index + 1
+                ];
+                html += `<div class="chord-note">${getNoteName(notes[2], currentState.accidental, degrees[0])}</div>`;
+                html += `<div class="chord-note">${getNoteName(notes[1], currentState.accidental, degrees[1])}</div>`;
+                html += `<div class="chord-note">${getNoteName(notes[0], currentState.accidental, degrees[2])}</div>`;
+            } else if (currentState.scaleDisplayMode === 'degrees') {
+                const notes = chord.notes;
+                const rootIndex = getNoteIndex(currentState.rootNote);
+                html += `<div class="chord-degree-note">${getDegreeWithAccidental(notes[2], scaleNotes, rootIndex)}</div>`;
+                html += `<div class="chord-degree-note">${getDegreeWithAccidental(notes[1], scaleNotes, rootIndex)}</div>`;
+                html += `<div class="chord-degree-note">${getDegreeWithAccidental(notes[0], scaleNotes, rootIndex)}</div>`;
+            }
+            
+            html += '</div>';
+        });
+        
+        scaleContent.innerHTML = html;
+    }
     
-    scaleContent.innerHTML = html;
-    
+    // Add click listeners for both modes
     document.querySelectorAll('.chord-column').forEach(column => {
         column.addEventListener('click', () => {
             const chordDegree = parseInt(column.dataset.chord);
@@ -395,7 +466,14 @@ function getChordSymbol(chordType) {
     const symbols = {
         'major': '',
         'minor': 'm',
-        'diminished': 'dim'
+        'diminished': 'dim',
+        'augmented': 'aug',
+        'maj7': 'maj7',
+        'min7': 'm7',
+        'dom7': '7',
+        'min7b5': 'm7♭5',
+        'maj7s5': 'maj7#5',
+        'dim7': 'dim7'
     };
     return symbols[chordType] || '';
 }
@@ -405,54 +483,34 @@ function updateNoteButtons() {
     
     noteBtns.forEach(btn => {
         const note = btn.dataset.note;
+        
         if (currentState.accidental === 'sharp') {
-            if (note === 'C') {
-                btn.textContent = 'C#';
-                btn.dataset.actualNote = 'C#';
-            } else if (note === 'D') {
-                btn.textContent = 'D#';
-                btn.dataset.actualNote = 'D#';
-            } else if (note === 'E') {
-                btn.textContent = 'E#';
-                btn.dataset.actualNote = 'F';
-            } else if (note === 'F') {
-                btn.textContent = 'F#';
-                btn.dataset.actualNote = 'F#';
-            } else if (note === 'G') {
-                btn.textContent = 'G#';
-                btn.dataset.actualNote = 'G#';
-            } else if (note === 'A') {
-                btn.textContent = 'A#';
-                btn.dataset.actualNote = 'A#';
-            } else if (note === 'B') {
-                btn.textContent = 'B#';
-                btn.dataset.actualNote = 'C';
-            }
+            const sharpMap = {
+                'C': 'C#',
+                'D': 'D#',
+                'E': 'E#',
+                'F': 'F#',
+                'G': 'G#',
+                'A': 'A#',
+                'B': 'B#'
+            };
+            btn.dataset.actualNote = sharpMap[note] || note;
+            if (note === 'E') btn.dataset.actualNote = 'F';
+            else if (note === 'B') btn.dataset.actualNote = 'C';
         } else if (currentState.accidental === 'flat') {
-            if (note === 'C') {
-                btn.textContent = 'Cb';
-                btn.dataset.actualNote = 'B';
-            } else if (note === 'D') {
-                btn.textContent = 'Db';
-                btn.dataset.actualNote = 'Db';
-            } else if (note === 'E') {
-                btn.textContent = 'Eb';
-                btn.dataset.actualNote = 'Eb';
-            } else if (note === 'F') {
-                btn.textContent = 'Fb';
-                btn.dataset.actualNote = 'E';
-            } else if (note === 'G') {
-                btn.textContent = 'Gb';
-                btn.dataset.actualNote = 'Gb';
-            } else if (note === 'A') {
-                btn.textContent = 'Ab';
-                btn.dataset.actualNote = 'Ab';
-            } else if (note === 'B') {
-                btn.textContent = 'Bb';
-                btn.dataset.actualNote = 'Bb';
-            }
+            const flatMap = {
+                'C': 'Cb',
+                'D': 'Db',
+                'E': 'Eb',
+                'F': 'Fb',
+                'G': 'Gb',
+                'A': 'Ab',
+                'B': 'Bb'
+            };
+            btn.dataset.actualNote = flatMap[note] || note;
+            if (note === 'C') btn.dataset.actualNote = 'B';
+            else if (note === 'F') btn.dataset.actualNote = 'E';
         } else {
-            btn.textContent = note;
             btn.dataset.actualNote = note;
         }
     });
@@ -529,27 +587,15 @@ function saveSavedMarks() {
 }
 
 function buildMiniFretboard(mark) {
-    const stringNotes = ['E', 'A', 'D', 'G', 'B', 'E'];
     const fretCount = mark.maxFret - mark.minFret + 1;
     const htmlParts = [];
+    const startsAtZero = mark.minFret === 0;
     
-    htmlParts.push('<div class="mini-chord-diagram"><div class="mini-fretboard">');
+    htmlParts.push('<div class="mini-chord-diagram"><div class="mini-fretboard', startsAtZero ? ' starts-at-zero' : '', '">');
     
     for (let stringIndex = 5; stringIndex >= 0; stringIndex--) {
-        const openNote = stringNotes[stringIndex];
-        const openKey = stringIndex + '_0';
-        const hasOpenMark = mark.marks[openKey];
-        
         htmlParts.push('<div class="mini-string-row">');
-        htmlParts.push('<div class="mini-open-note">');
-        if (hasOpenMark) {
-            htmlParts.push('<div class="mini-open-marker" style="background: ', mark.marks[openKey], ';">', openNote, '</div>');
-        } else {
-            htmlParts.push('<span class="mini-open-label">', openNote, '</span>');
-        }
-        htmlParts.push('</div>');
         htmlParts.push('<div class="mini-fretboard-area">');
-        htmlParts.push('<div class="mini-fret-line nut-line"></div>');
         
         for (let i = 0; i < fretCount; i++) {
             const fret = mark.minFret + i;
@@ -557,12 +603,8 @@ function buildMiniFretboard(mark) {
             const isMarked = mark.marks[key];
             
             htmlParts.push('<div class="mini-fret-box">');
-            htmlParts.push('<div class="mini-fret-line"></div>');
             if (isMarked) {
                 htmlParts.push('<div class="mini-note-marker" style="background: ', mark.marks[key], ';">', getNoteAtPosition(stringIndex, fret), '</div>');
-            }
-            if (i === 0 && fret > 0) {
-                htmlParts.push('<div class="mini-fret-num">', fret, '</div>');
             }
             htmlParts.push('</div>');
         }
@@ -653,9 +695,45 @@ function viewSavedMark(index) {
     }
     
     document.querySelectorAll('.note-btn').forEach(btn => btn.classList.remove('active'));
-    const noteBtn = document.querySelector(`.note-btn[data-note="${mark.rootNote}"]`);
+    
+    const rootNote = mark.rootNote;
+    let noteToSelect = rootNote;
+    let accidentalToSet = 'natural';
+    
+    if (rootNote.includes('#')) {
+        accidentalToSet = 'sharp';
+        noteToSelect = rootNote.replace('#', '');
+    } else if (rootNote.startsWith('D') && rootNote.length > 1) {
+        accidentalToSet = 'flat';
+        noteToSelect = 'D';
+    } else if (rootNote.startsWith('E') && rootNote.length > 1) {
+        accidentalToSet = 'flat';
+        noteToSelect = 'E';
+    } else if (rootNote.startsWith('G') && rootNote.length > 1) {
+        accidentalToSet = 'flat';
+        noteToSelect = 'G';
+    } else if (rootNote.startsWith('A') && rootNote.length > 1) {
+        accidentalToSet = 'flat';
+        noteToSelect = 'A';
+    } else if (rootNote.startsWith('B') && rootNote.length > 1) {
+        accidentalToSet = 'flat';
+        noteToSelect = 'B';
+    } else if (rootNote === 'Cb') {
+        accidentalToSet = 'flat';
+        noteToSelect = 'C';
+    } else if (rootNote === 'Fb') {
+        accidentalToSet = 'flat';
+        noteToSelect = 'F';
+    }
+    
+    currentState.accidental = accidentalToSet;
+    document.querySelector(`input[name="accidental"][value="${accidentalToSet}"]`).checked = true;
+    updateNoteButtons();
+    
+    let noteBtn = document.querySelector(`.note-btn[data-note="${noteToSelect}"]`);
     if (noteBtn) {
         noteBtn.classList.add('active');
+        currentState.rootNote = rootNote;
     }
     
     renderFretboard();
@@ -864,7 +942,7 @@ function initEventListeners() {
         button.addEventListener('click', () => {
             noteButtons.forEach(btn => btn.classList.remove('active'));
             button.classList.add('active');
-            currentState.rootNote = button.dataset.note;
+            currentState.rootNote = button.dataset.actualNote || button.dataset.note;
             renderFretboard();
             updateScaleInfo();
         });
@@ -886,6 +964,7 @@ function initEventListeners() {
     accidentalRadios.forEach(radio => {
         radio.addEventListener('change', () => {
             currentState.accidental = radio.value;
+            updateNoteButtons();
             renderFretboard();
             updateScaleInfo();
         });
@@ -958,10 +1037,26 @@ function initEventListeners() {
         });
     });
     
+    const seventhToggle = document.getElementById('seventhMode');
+    if (seventhToggle) {
+        seventhToggle.addEventListener('change', () => {
+            currentState.seventhMode = seventhToggle.checked;
+            renderFretboard();
+            updateScaleInfo();
+        });
+    }
+    
     document.getElementById('saveButton').addEventListener('click', saveCurrentMarks);
+    document.getElementById('clearButton').addEventListener('click', clearMarks);
     
     initTabListeners();
     initContextMenu();
+}
+
+function clearMarks() {
+    currentState.markedNotes = {};
+    renderFretboard();
+    showToast('已清空所有标记', 'success');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
