@@ -1,13 +1,5 @@
-// ======================================================================
-// Supabase 客户端配置
-// 部署前请替换下方两个常量为你的项目凭据
-// ======================================================================
-
-// TODO: 替换为你的 Supabase 项目 URL（Dashboard → Settings → API）
-const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
-
-// TODO: 替换为 anon 公共密钥（Dashboard → Settings → API → Project API keys）
-const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
+const SUPABASE_URL = 'https://ccspahsozfojnsotktmu.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_8hqYhcwIVoy7iXLyORzofg_bkc56TrS';
 
 // 初始化客户端（supabase-js CDN 已在 index.html 引入）
 let supabaseClient = null;
