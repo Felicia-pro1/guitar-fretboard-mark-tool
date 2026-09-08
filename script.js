@@ -1775,21 +1775,22 @@ async function cloudPullAll() {
 }
 
 function showCloudSyncModal() {
-    if (typeof getDeviceId !== 'function') {
+    if (typeof supabaseEnabled === 'undefined') {
         showToast('云同步未启用', 'error');
         return;
     }
-    const deviceId = getDeviceId();
-    const enabled = typeof supabaseEnabled !== 'undefined' && supabaseEnabled;
+    const enabled = supabaseEnabled;
     const modal = document.createElement('div');
     modal.className = 'confirm-modal';
     modal.innerHTML = `
-        <div class="confirm-modal-content" style="max-width: 480px;">
-            <h3 style="margin:0 0 12px;color:#6B4423;">云同步设置</h3>
-            <p style="font-size:0.85rem;color:#A69076;margin-bottom:14px;">状态：${enabled ? '已启用' : '未启用（需配置 supabase-config.js）'}</p>
-            <div style="font-size:0.85rem;margin-bottom:6px;color:#6B4423;">本设备 ID：</div>
-            <div style="font-family:monospace;font-size:0.8rem;padding:8px;background:#F5EEE6;border-radius:6px;word-break:break-all;margin-bottom:14px;">${escapeHtml(deviceId)}</div>
-            <p style="font-size:0.8rem;color:#A69076;margin-bottom:14px;line-height:1.5;">跨设备同步：在另一台设备点击"导入设备 ID"，粘贴此 ID，然后"从云端拉取"。</p>
+        <div class="confirm-modal-content" style="max-width: 460px;">
+            <h3 style="margin:0 0 12px;color:#6B4423;">云同步</h3>
+            <p style="font-size:0.85rem;color:#A69076;margin-bottom:14px;">状态：${enabled ? '✅ 已连接 Supabase' : '❌ 未启用（需配置 supabase-config.js）'}</p>
+            <div style="font-size:0.85rem;line-height:1.7;color:#6B4423;margin-bottom:16px;">
+                <div><b>全量上传</b>：把本机所有标记和分类备份到云端</div>
+                <div><b>从云端拉取</b>：下载云端数据并覆盖本机（换设备时用）</div>
+            </div>
+            <p style="font-size:0.78rem;color:#A69076;margin-bottom:14px;line-height:1.5;">提示：在新设备上首次使用，配置好 supabase-config.js 后直接点"从云端拉取"即可看到所有数据，无需其他操作。日常保存会自动同步。</p>
             <div class="confirm-modal-buttons">
                 <button class="confirm-cancel">关闭</button>
                 <button class="cloud-push" style="background:#6B4423;color:#fff;">全量上传</button>

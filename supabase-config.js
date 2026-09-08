@@ -106,18 +106,19 @@ async function syncPushAll() {
 // ======================================================================
 async function syncPullAll() {
     if (!supabaseEnabled) return { ok: false, reason: 'supabase_disabled' };
-    const deviceId = getDeviceId();
 
     try {
+        // 跨设备同步：拉取云端全部数据，不按 device_id 过滤
+        // （个人工具，RLS 已公开；device_id 仅作为来源标记，不作为查询条件）
         const [fRes, mRes] = await Promise.all([
-            supabaseClient.from('folders').select('*').eq('device_id', deviceId),
-            supabaseClient.from('marks').select('*').eq('device_id', deviceId).order('sort_order', { ascending: true })
+            supabaseClient.from('folders').select('*').order('created_at', { ascending: true }),
+            supabaseClient.from('marks').select('*').order('sort_order', { ascending: true })
         ]);
 
         if (fRes.error) throw fRes.error;
         if (mRes.error) throw mRes.error;
 
-        // 还原 folders
+        // 还原 folders（云端有数据才覆盖，避免空结果清掉本地）
         if (fRes.data && fRes.data.length > 0) {
             savedFolders = fRes.data.map(row => ({
                 id: row.id,
@@ -144,7 +145,7 @@ async function syncPullAll() {
                 note: row.note || '',
                 imageUrl: row.image_url,
                 folderId: row.folder_id,
-                createdAt: new Date(row.created_at).getTime()
+                createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now()
             }));
             saveSavedMarks();
         }
