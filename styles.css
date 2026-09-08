@@ -815,6 +815,39 @@ input[type="checkbox"], input[type="radio"] {
     background: #C9B896;
 }
 
+/* 导出图片按钮 */
+.saved-item-btn.export {
+    background: #E8DDD1;
+    color: #8B7355;
+}
+
+.saved-item-btn.export:hover {
+    background: #6B4423;
+    color: #FFFFFF;
+}
+
+/* 顶部云同步按钮 */
+.cloud-sync-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 16px;
+    border: 1px solid #D4A76A;
+    background: #FEFDFB;
+    color: #6B4423;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.3s;
+    margin-left: auto;
+}
+
+.cloud-sync-btn:hover {
+    background: #6B4423;
+    color: #FFFFFF;
+    border-color: #6B4423;
+}
+
 .saved-item-header {
     display: flex;
     align-items: center;

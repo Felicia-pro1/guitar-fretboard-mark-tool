@@ -562,6 +562,11 @@ function saveSavedFolders() {
     localStorage.setItem('guitarFretboardFolders', JSON.stringify(savedFolders));
 }
 
+// 触发云端文件夹同步
+function cloudSyncFolder(folder) {
+    if (typeof syncPushFolder === 'function' && folder) syncPushFolder(folder);
+}
+
 // 获取文件夹深度：root=0, 顶层=1, 二级=2
 function getFolderDepth(folderId) {
     if (folderId === ROOT_FOLDER_ID) return 0;
@@ -597,16 +602,22 @@ function loadSavedMarks() {
             const parsed = JSON.parse(saved);
             if (Array.isArray(parsed) && parsed.length > 0) {
                 const dataVersion = localStorage.getItem('guitarFretboardVersion') || '1.0';
-                const currentVersion = '1.2';
+                const currentVersion = '1.3';
 
-                if (dataVersion !== currentVersion) {
-                    parsed.forEach(mark => {
-                        if (!mark.rootNote) mark.rootNote = 'C';
-                        if (!mark.scale) mark.scale = 'major';
-                        if (!mark.tuning) mark.tuning = 'standard';
-                        if (!mark.createdAt) mark.createdAt = Date.now();
-                        if (!mark.folderId) mark.folderId = ROOT_FOLDER_ID;
-                    });
+                let needSave = dataVersion !== currentVersion;
+                parsed.forEach(mark => {
+                    if (!mark.rootNote) mark.rootNote = 'C';
+                    if (!mark.scale) mark.scale = 'major';
+                    if (!mark.tuning) mark.tuning = 'standard';
+                    if (!mark.createdAt) mark.createdAt = Date.now();
+                    if (!mark.folderId) mark.folderId = ROOT_FOLDER_ID;
+                    // 为旧数据补 id（用于云端同步）
+                    if (!mark.id) {
+                        mark.id = 'mk_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+                        needSave = true;
+                    }
+                });
+                if (needSave) {
                     localStorage.setItem('guitarFretboardVersion', currentVersion);
                     localStorage.setItem('guitarFretboardMarks', JSON.stringify(parsed));
                 }
@@ -616,9 +627,12 @@ function loadSavedMarks() {
     } catch (e) {
         console.error('Failed to load saved marks:', e);
     }
-    localStorage.setItem('guitarFretboardVersion', '1.2');
+    localStorage.setItem('guitarFretboardVersion', '1.3');
     const defaults = getDefaultMarks();
-    defaults.forEach(m => { m.folderId = ROOT_FOLDER_ID; });
+    defaults.forEach(m => {
+        m.folderId = ROOT_FOLDER_ID;
+        m.id = 'mk_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8) + '_' + Math.floor(Math.random()*1000);
+    });
     return defaults;
 }
 
@@ -686,6 +700,11 @@ function getDefaultMarks() {
 
 function saveSavedMarks() {
     localStorage.setItem('guitarFretboardMarks', JSON.stringify(savedMarks));
+}
+
+// 触发云端同步（异步，失败仅打印日志）
+function cloudSyncMark(mark) {
+    if (typeof syncPushMark === 'function' && mark) syncPushMark(mark);
 }
 
 function buildMiniFretboard(mark) {
@@ -916,6 +935,13 @@ function renderSavedItem(i) {
         '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
         '</svg>',
         '</button>',
+        '<button class="saved-item-btn export" onclick="exportChordImage(', i, ', true)" title="导出图片/上传">',
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
+        '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>',
+        '<polyline points="17 8 12 3 7 8"/>',
+        '<line x1="12" y1="3" x2="12" y2="15"/>',
+        '</svg>',
+        '</button>',
         '<button class="saved-item-btn move" onclick="moveMarkToFolder(', i, ')" title="移动到分类">',
         '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
         '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
@@ -954,6 +980,7 @@ function createFolder(parentId) {
         };
         savedFolders.push(folder);
         saveSavedFolders();
+        cloudSyncFolder(folder);
         renderSavedList();
         showToast('分类创建成功', 'success');
     });
@@ -970,6 +997,7 @@ function renameFolder(folderId) {
         if (newName && newName.trim()) {
             folder.name = newName.trim();
             saveSavedFolders();
+            cloudSyncFolder(folder);
             renderSavedList();
             showToast('重命名成功', 'success');
         }
@@ -1011,12 +1039,16 @@ function deleteFolder(folderId, cascade) {
         savedMarks.forEach(mark => {
             if (mark.folderId === folderId) {
                 mark.folderId = parentId;
+                cloudSyncMark(mark);
             }
         });
     }
 
     const idx = savedFolders.findIndex(f => f.id === folderId);
-    if (idx >= 0) savedFolders.splice(idx, 1);
+    if (idx >= 0) {
+        if (typeof syncDeleteFolder === 'function') syncDeleteFolder(folderId);
+        savedFolders.splice(idx, 1);
+    }
     saveSavedFolders();
     saveSavedMarks();
     renderSavedList();
@@ -1029,6 +1061,7 @@ function moveMarkToFolder(index) {
         if (targetFolderId === null) return;
         savedMarks[index].folderId = targetFolderId;
         saveSavedMarks();
+        cloudSyncMark(savedMarks[index]);
         renderSavedList();
         showToast('已移动到分类', 'success');
     });
@@ -1567,17 +1600,21 @@ function saveCurrentMarks() {
     };
 
     if (currentState.editingIndex !== null) {
-        // 编辑时保留原 note 与 folderId（如果用户改了下拉框，使用新的）
+        // 编辑时保留原 note、folderId 与云端 id（如果有）
         markData.note = savedMarks[currentState.editingIndex].note || '';
         markData.folderId = currentSaveFolderId;
+        markData.id = savedMarks[currentState.editingIndex].id || ('mk_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8));
+        markData.imageUrl = savedMarks[currentState.editingIndex].imageUrl;
         savedMarks[currentState.editingIndex] = markData;
         showToast('修改成功！', 'success');
     } else {
+        markData.id = 'mk_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
         savedMarks.push(markData);
         showToast('保存成功！', 'success');
     }
 
     saveSavedMarks();
+    cloudSyncMark(markData);
 
     document.getElementById('saveName').value = '';
     document.getElementById('saveMinFret').value = '0';
@@ -1616,9 +1653,170 @@ function renameSavedMark(index) {
 
 function deleteSavedMark(index) {
     showConfirmModal('确定要删除这个保存的标记吗？', () => {
+        const mark = savedMarks[index];
+        if (mark && mark.id && typeof syncDeleteMark === 'function') syncDeleteMark(mark.id);
         savedMarks.splice(index, 1);
         saveSavedMarks();
         renderSavedList();
+    });
+}
+
+// ======================================================================
+// 迷你和弦图导出 PNG（用 html2canvas 渲染 .mini-chord-diagram）
+// 流程：克隆节点 → 移除按钮等干扰元素 → html2canvas → dataURL
+// 选项：upload=true 上传到 Supabase Storage；否则仅下载
+// ======================================================================
+async function exportChordImage(index, upload = true) {
+    const mark = savedMarks[index];
+    if (!mark) return;
+    if (typeof html2canvas === 'undefined') {
+        showToast('图片导出库未加载（html2canvas）', 'error');
+        return;
+    }
+    const diagram = document.querySelector('.saved-item[data-index="' + index + '"] .mini-chord-diagram');
+    if (!diagram) {
+        showToast('找不到和弦图元素', 'error');
+        return;
+    }
+    showToast('正在生成图片...', 'success');
+
+    try {
+        // 克隆节点，移除按钮和文本框，避免出现在图片里
+        const clone = diagram.cloneNode(true);
+        const tempWrap = document.createElement('div');
+        tempWrap.style.position = 'fixed';
+        tempWrap.style.left = '-9999px';
+        tempWrap.style.top = '0';
+        tempWrap.style.background = '#FEFDFB';
+        tempWrap.style.padding = '12px';
+        tempWrap.appendChild(clone);
+        // 移除交互元素
+        clone.querySelectorAll('.mini-note-btn, .mini-chord-note-input').forEach(el => el.remove());
+        document.body.appendChild(tempWrap);
+
+        const canvas = await html2canvas(clone, { backgroundColor: '#FEFDFB', scale: 2 });
+        document.body.removeChild(tempWrap);
+
+        const dataUrl = canvas.toDataURL('image/png');
+
+        if (upload && typeof uploadChordImage === 'function' && mark.id) {
+            showToast('正在上传...', 'success');
+            const publicUrl = await uploadChordImage(dataUrl, mark.id);
+            if (publicUrl) {
+                mark.imageUrl = publicUrl;
+                saveSavedMarks();
+                cloudSyncMark(mark);
+                showToast('图片已上传，链接已复制', 'success');
+                try {
+                    await navigator.clipboard.writeText(publicUrl);
+                } catch (e) {}
+                // 在新窗口打开图片，便于查看
+                window.open(publicUrl, '_blank');
+            } else {
+                // 上传失败则降级为下载
+                downloadImage(dataUrl, mark.name + '.png');
+                showToast('上传失败，已下载本地', 'error');
+            }
+        } else {
+            downloadImage(dataUrl, mark.name + '.png');
+            showToast('图片已下载', 'success');
+        }
+    } catch (e) {
+        console.error('图片导出失败:', e);
+        showToast('图片导出失败: ' + e.message, 'error');
+    }
+}
+
+function downloadImage(dataUrl, filename) {
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+// ======================================================================
+// 云同步：全量上传 / 全量拉取
+// ======================================================================
+async function cloudPushAll() {
+    if (typeof syncPushAll !== 'function') {
+        showToast('云同步未启用（需配置 Supabase）', 'error');
+        return;
+    }
+    showToast('正在上传到云端...', 'success');
+    const r = await syncPushAll();
+    if (r.ok) {
+        showToast('已上传 ' + r.count + ' 项到云端', 'success');
+    } else if (r.reason === 'supabase_disabled') {
+        showToast('云同步未启用（需配置 Supabase）', 'error');
+    } else {
+        showToast('上传失败：' + r.reason, 'error');
+    }
+}
+
+async function cloudPullAll() {
+    if (typeof syncPullAll !== 'function') {
+        showToast('云同步未启用（需配置 Supabase）', 'error');
+        return;
+    }
+    showConfirmModal('从云端拉取将覆盖本地数据，确定继续？', async () => {
+        showToast('正在从云端拉取...', 'success');
+        const r = await syncPullAll();
+        if (r.ok) {
+            renderSavedList();
+            showToast('已拉取 ' + r.marks + ' 项标记、' + r.folders + ' 个分类', 'success');
+        } else if (r.reason === 'supabase_disabled') {
+            showToast('云同步未启用（需配置 Supabase）', 'error');
+        } else {
+            showToast('拉取失败：' + r.reason, 'error');
+        }
+    });
+}
+
+function showCloudSyncModal() {
+    if (typeof getDeviceId !== 'function') {
+        showToast('云同步未启用', 'error');
+        return;
+    }
+    const deviceId = getDeviceId();
+    const enabled = typeof supabaseEnabled !== 'undefined' && supabaseEnabled;
+    const modal = document.createElement('div');
+    modal.className = 'confirm-modal';
+    modal.innerHTML = `
+        <div class="confirm-modal-content" style="max-width: 480px;">
+            <h3 style="margin:0 0 12px;color:#6B4423;">云同步设置</h3>
+            <p style="font-size:0.85rem;color:#A69076;margin-bottom:14px;">状态：${enabled ? '已启用' : '未启用（需配置 supabase-config.js）'}</p>
+            <div style="font-size:0.85rem;margin-bottom:6px;color:#6B4423;">本设备 ID：</div>
+            <div style="font-family:monospace;font-size:0.8rem;padding:8px;background:#F5EEE6;border-radius:6px;word-break:break-all;margin-bottom:14px;">${escapeHtml(deviceId)}</div>
+            <p style="font-size:0.8rem;color:#A69076;margin-bottom:14px;line-height:1.5;">跨设备同步：在另一台设备点击"导入设备 ID"，粘贴此 ID，然后"从云端拉取"。</p>
+            <div class="confirm-modal-buttons">
+                <button class="confirm-cancel">关闭</button>
+                <button class="cloud-push" style="background:#6B4423;color:#fff;">全量上传</button>
+                <button class="cloud-pull" style="background:#D4A76A;color:#6B4423;">从云端拉取</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.querySelector('.confirm-cancel').addEventListener('click', () => document.body.removeChild(modal));
+    modal.querySelector('.cloud-push').addEventListener('click', async () => {
+        document.body.removeChild(modal);
+        await cloudPushAll();
+    });
+    modal.querySelector('.cloud-pull').addEventListener('click', async () => {
+        document.body.removeChild(modal);
+        await cloudPullAll();
+    });
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) document.body.removeChild(modal);
+    });
+}
+
+function showImportDeviceIdModal() {
+    showPromptModal('粘贴设备 ID：', '', (newId) => {
+        if (newId && newId.trim()) {
+            importDeviceId(newId.trim());
+        }
     });
 }
 
