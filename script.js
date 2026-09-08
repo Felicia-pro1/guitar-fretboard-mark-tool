@@ -359,6 +359,20 @@ function toggleMark(stringIndex, fret) {
         currentState.markedNotes[noteKey] = currentState.selectedColor;
     }
     renderFretboard();
+    updateFretRangeFromMarks();
+}
+
+// 根据当前标记自动识别品记范围并覆盖输入框
+function updateFretRangeFromMarks() {
+    const frets = Object.keys(currentState.markedNotes).map(key => parseInt(key.split('_')[1]));
+    if (frets.length === 0) return;
+
+    const minFret = Math.min(...frets);
+    const maxFret = Math.max(...frets);
+    const minInput = document.getElementById('saveMinFret');
+    const maxInput = document.getElementById('saveMaxFret');
+    if (minInput) minInput.value = minFret;
+    if (maxInput) maxInput.value = maxFret;
 }
 
 function updateScaleInfo() {
@@ -516,8 +530,65 @@ function updateNoteButtons() {
     });
 }
 
+const ROOT_FOLDER_ID = 'root';
+const MAX_FOLDER_DEPTH = 2;
+
 let savedMarks = loadSavedMarks();
+let savedFolders = loadSavedFolders();
 let contextMenuTarget = null;
+// 当前保存时归属的文件夹 id，'root' 表示未分类
+let currentSaveFolderId = 'root';
+// 已保存列表的显示列数（由布局按钮控制）
+let currentColumns = 3;
+
+function generateFolderId() {
+    return 'folder_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+}
+
+function loadSavedFolders() {
+    try {
+        const saved = localStorage.getItem('guitarFretboardFolders');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) return parsed;
+        }
+    } catch (e) {
+        console.error('Failed to load folders:', e);
+    }
+    return [];
+}
+
+function saveSavedFolders() {
+    localStorage.setItem('guitarFretboardFolders', JSON.stringify(savedFolders));
+}
+
+// 获取文件夹深度：root=0, 顶层=1, 二级=2
+function getFolderDepth(folderId) {
+    if (folderId === ROOT_FOLDER_ID) return 0;
+    let depth = 0;
+    let current = folderId;
+    const guard = new Set();
+    while (current && current !== ROOT_FOLDER_ID && !guard.has(current)) {
+        guard.add(current);
+        depth++;
+        const folder = savedFolders.find(f => f.id === current);
+        if (!folder) break;
+        current = folder.parentId;
+    }
+    return depth;
+}
+
+// 获取文件夹下所有子文件夹（直接子级）
+function getChildFolders(parentId) {
+    return savedFolders.filter(f => f.parentId === parentId);
+}
+
+// 获取文件夹下所有项
+function getMarksInFolder(folderId) {
+    return savedMarks
+        .map((m, i) => ({ mark: m, index: i }))
+        .filter(({ mark }) => (mark.folderId || ROOT_FOLDER_ID) === folderId);
+}
 
 function loadSavedMarks() {
     try {
@@ -526,17 +597,18 @@ function loadSavedMarks() {
             const parsed = JSON.parse(saved);
             if (Array.isArray(parsed) && parsed.length > 0) {
                 const dataVersion = localStorage.getItem('guitarFretboardVersion') || '1.0';
-                const currentVersion = '1.1';
-                
+                const currentVersion = '1.2';
+
                 if (dataVersion !== currentVersion) {
                     parsed.forEach(mark => {
                         if (!mark.rootNote) mark.rootNote = 'C';
                         if (!mark.scale) mark.scale = 'major';
                         if (!mark.tuning) mark.tuning = 'standard';
                         if (!mark.createdAt) mark.createdAt = Date.now();
+                        if (!mark.folderId) mark.folderId = ROOT_FOLDER_ID;
                     });
                     localStorage.setItem('guitarFretboardVersion', currentVersion);
-                    saveSavedMarks();
+                    localStorage.setItem('guitarFretboardMarks', JSON.stringify(parsed));
                 }
                 return parsed;
             }
@@ -544,8 +616,10 @@ function loadSavedMarks() {
     } catch (e) {
         console.error('Failed to load saved marks:', e);
     }
-    localStorage.setItem('guitarFretboardVersion', '1.1');
-    return getDefaultMarks();
+    localStorage.setItem('guitarFretboardVersion', '1.2');
+    const defaults = getDefaultMarks();
+    defaults.forEach(m => { m.folderId = ROOT_FOLDER_ID; });
+    return defaults;
 }
 
 function getNoteAtPosition(stringIndex, fret) {
@@ -573,6 +647,7 @@ function getDefaultMarks() {
             rootNote: 'C',
             scale: 'major',
             tuning: 'standard',
+            labels: 'notes',
             createdAt: Date.now() - 86400000
         },
         {
@@ -588,6 +663,7 @@ function getDefaultMarks() {
             rootNote: 'G',
             scale: 'major',
             tuning: 'standard',
+            labels: 'notes',
             createdAt: Date.now() - 72000000
         },
         {
@@ -602,6 +678,7 @@ function getDefaultMarks() {
             rootNote: 'A',
             scale: 'naturalMinor',
             tuning: 'standard',
+            labels: 'notes',
             createdAt: Date.now() - 36000000
         }
     ];
@@ -615,8 +692,19 @@ function buildMiniFretboard(mark) {
     const fretCount = mark.maxFret - mark.minFret + 1;
     const htmlParts = [];
     const startsAtZero = mark.minFret === 0;
+    const labels = mark.labels || 'notes';
+    const hasNote = mark.note && mark.note.trim() !== '';
     
-    htmlParts.push('<div class="mini-chord-diagram"><div class="mini-fretboard', startsAtZero ? ' starts-at-zero' : '', '">');
+    const rootIndex = getNoteIndex(mark.rootNote);
+    const scaleNotes = getScaleNotes(mark.rootNote, mark.scale);
+    
+    htmlParts.push('<div class="mini-chord-diagram">');
+    htmlParts.push('<button class="mini-note-btn', hasNote ? ' has-note' : '', '" onclick="editNote(', savedMarks.indexOf(mark), ')" title="', hasNote ? '编辑备注' : '添加备注', '">');
+    htmlParts.push('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">');
+    htmlParts.push('<line x1="12" y1="5" x2="12" y2="19"/>');
+    htmlParts.push('<line x1="5" y1="12" x2="19" y2="12"/>');
+    htmlParts.push('</svg></button>');
+    htmlParts.push('<div class="mini-fretboard', startsAtZero ? ' starts-at-zero' : '', '">');
     
     for (let stringIndex = 5; stringIndex >= 0; stringIndex--) {
         htmlParts.push('<div class="mini-string-row">');
@@ -629,7 +717,18 @@ function buildMiniFretboard(mark) {
             
             htmlParts.push('<div class="mini-fret-box">');
             if (isMarked) {
-                htmlParts.push('<div class="mini-note-marker" style="background: ', mark.marks[key], ';">', getNoteAtPosition(stringIndex, fret), '</div>');
+                let label = '';
+                if (labels === 'degrees') {
+                    const stringNotes = ['E', 'A', 'D', 'G', 'B', 'E'];
+                    const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+                    const openNote = stringNotes[stringIndex];
+                    const openIndex = noteNames.indexOf(openNote);
+                    const noteIndex = (openIndex + fret) % 12;
+                    label = getDegreeWithAccidental(noteIndex, scaleNotes, rootIndex);
+                } else {
+                    label = getNoteAtPosition(stringIndex, fret);
+                }
+                htmlParts.push('<div class="mini-note-marker" style="background: ', mark.marks[key], ';">', label, '</div>');
             }
             htmlParts.push('</div>');
         }
@@ -642,19 +741,129 @@ function buildMiniFretboard(mark) {
         const fret = mark.minFret + i;
         htmlParts.push('<div class="mini-fret-bottom-num">', fret, '</div>');
     }
-    htmlParts.push('</div></div></div>');
+    htmlParts.push('</div>');
+
+    // 内联备注文本框：失焦自动保存，Esc 取消；无备注时默认隐藏，点击 + 后展开
+    const noteEmpty = !hasNote;
+    htmlParts.push('<textarea class="mini-chord-note-input', noteEmpty ? ' note-empty' : '', '" data-index="', savedMarks.indexOf(mark), '" placeholder="添加备注..." rows="1">', escapeHtml(mark.note || ''), '</textarea>');
+
+    htmlParts.push('</div></div>');
     
     return htmlParts.join('');
 }
 
 function renderSavedList() {
     const savedList = document.getElementById('savedList');
-    
-    if (savedMarks.length === 0) {
+    updateSaveTargetFolderOptions();
+
+    if (savedMarks.length === 0 && savedFolders.length === 0) {
         savedList.innerHTML = '<div class="empty-state">暂无保存的标记</div>';
         return;
     }
-    
+
+    const parts = [];
+    const rootItems = getMarksInFolder(ROOT_FOLDER_ID);
+    const rootFolders = getChildFolders(ROOT_FOLDER_ID);
+
+    // 渲染顶层文件夹
+    rootFolders.forEach(folder => {
+        parts.push(renderFolderBlock(folder, 1));
+    });
+
+    // 渲染顶层未分类项
+    if (rootItems.length > 0) {
+        parts.push('<div class="folder-block root-folder">');
+        parts.push('<div class="folder-header">');
+        parts.push('<div class="folder-title">未分类</div>');
+        parts.push('<div class="folder-count">', rootItems.length, ' 项</div>');
+        parts.push('</div>');
+        parts.push('<div class="folder-content saved-list-grid columns-', currentColumns, '">');
+        rootItems.forEach(({ index }) => {
+            parts.push(renderSavedItem(index));
+        });
+        parts.push('</div></div>');
+    } else if (rootFolders.length === 0) {
+        parts.push('<div class="empty-state">暂无保存的标记</div>');
+    }
+
+    savedList.className = 'saved-tree';
+    savedList.innerHTML = parts.join('');
+
+    // 渲染后自动调整内联备注文本框高度
+    requestAnimationFrame(() => {
+        savedList.querySelectorAll('.mini-chord-note-input').forEach(autoGrowNoteInput);
+    });
+}
+
+// 渲染文件夹区块（递归，受 MAX_FOLDER_DEPTH 限制）
+function renderFolderBlock(folder, depth) {
+    const childFolders = getChildFolders(folder.id);
+    const items = getMarksInFolder(folder.id);
+    const expanded = folder.expanded !== false;
+    const parts = [];
+
+    parts.push('<div class="folder-block" data-folder-id="', folder.id, '">');
+    parts.push('<div class="folder-header" draggable="true" ondragstart="folderDragStart(event, \'', folder.id, '\')" ondragend="folderDragEnd(event)" title="拖拽可移动分类">');
+    parts.push('<button class="folder-toggle" onclick="toggleFolder(\'', folder.id, '\')" title="', expanded ? '收起' : '展开', '">');
+    parts.push('<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="folder-toggle-icon', expanded ? ' expanded' : '', '">');
+    parts.push('<path d="M6 9l6 6 6-6"/>');
+    parts.push('</svg></button>');
+    parts.push('<svg class="folder-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">');
+    parts.push('<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>');
+    parts.push('</svg>');
+    parts.push('<div class="folder-title" ondblclick="renameFolder(\'', folder.id, '\')">', escapeHtml(folder.name), '</div>');
+    parts.push('<div class="folder-count">', childFolders.length + items.length, ' 项</div>');
+    parts.push('<div class="folder-actions">');
+    if (depth < MAX_FOLDER_DEPTH) {
+        parts.push('<button class="folder-action-btn" onclick="createSubFolder(\'', folder.id, '\')" title="新建子分类">');
+        parts.push('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">');
+        parts.push('<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>');
+        parts.push('<line x1="12" y1="11" x2="12" y2="17"/>');
+        parts.push('<line x1="9" y1="14" x2="15" y2="14"/>');
+        parts.push('</svg></button>');
+    }
+    parts.push('<button class="folder-action-btn" onclick="moveFolderPrompt(\'', folder.id, '\')" title="移动分类">');
+    parts.push('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">');
+    parts.push('<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>');
+    parts.push('<polyline points="9 14 12 17 15 14"/>');
+    parts.push('<line x1="12" y1="11" x2="12" y2="17"/>');
+    parts.push('</svg></button>');
+    parts.push('<button class="folder-action-btn" onclick="renameFolder(\'', folder.id, '\')" title="重命名">');
+    parts.push('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">');
+    parts.push('<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>');
+    parts.push('</svg></button>');
+    parts.push('<button class="folder-action-btn delete" onclick="confirmDeleteFolder(\'', folder.id, '\')" title="删除分类">');
+    parts.push('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">');
+    parts.push('<path d="M3 6h18"/>');
+    parts.push('<path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>');
+    parts.push('<path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>');
+    parts.push('</svg></button>');
+    parts.push('</div></div>');
+
+    parts.push('<div class="folder-content', expanded ? '' : ' collapsed', '">');
+    if (childFolders.length === 0 && items.length === 0) {
+        parts.push('<div class="folder-empty">此分类为空</div>');
+    } else {
+        if (childFolders.length > 0) {
+            childFolders.forEach(child => {
+                parts.push(renderFolderBlock(child, depth + 1));
+            });
+        }
+        if (items.length > 0) {
+            parts.push('<div class="saved-list-grid columns-', currentColumns, '">');
+            items.forEach(({ index }) => {
+                parts.push(renderSavedItem(index));
+            });
+            parts.push('</div>');
+        }
+    }
+    parts.push('</div></div>');
+    return parts.join('');
+}
+
+// 渲染单个 saved-item（保留原有结构，data-index 仍是 savedMarks 真实索引）
+function renderSavedItem(i) {
+    const mark = savedMarks[i];
     const scaleNames = {
         major: '大调',
         naturalMinor: '自然小调',
@@ -669,40 +878,324 @@ function renderSavedList() {
         mixolydian: '混合利底亚调',
         locrian: '洛克里亚调'
     };
-    
-    const items = [];
-    for (let i = 0; i < savedMarks.length; i++) {
-        const mark = savedMarks[i];
-        const scaleName = scaleNames[mark.scale] || mark.scale;
-        const miniFretboard = buildMiniFretboard(mark);
-        
-        items.push(
-            '<div class="saved-item" data-index="', i, '">',
-            '<div class="saved-item-header">',
-            '<div class="saved-item-title-row">',
-            '<button class="expand-icon" onclick="toggleExpand(', i, ')">',
-            '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
-            '<path d="M6 9l6 6 6-6"/>',
-            '</svg>',
-            '</button>',
-            '<div class="saved-item-name">', escapeHtml(mark.name), '</div>',
-            '<div class="saved-item-scale">', mark.rootNote, scaleName, '</div>',
-            '</div>',
-            '<div class="saved-item-frets">第 ', mark.minFret, ' - ', mark.maxFret, ' 品</div>',
-            '</div>',
-            '<div class="saved-item-detail" id="detail-', i, '" style="display: none;">',
-            miniFretboard,
-            '<div class="saved-item-actions">',
-            '<button class="saved-item-btn view" onclick="viewSavedMark(', i, ')">预览</button>',
-            '<button class="saved-item-btn edit" onclick="editSavedMark(', i, ')">编辑</button>',
-            '<button class="saved-item-btn delete" onclick="confirmDelete(', i, ')">删除</button>',
-            '</div>',
-            '</div>',
-            '</div>'
-        );
+    const scaleName = scaleNames[mark.scale] || mark.scale;
+    const miniFretboard = buildMiniFretboard(mark);
+
+    return [
+        '<div class="saved-item" data-index="', i, '" draggable="true" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="drop(event)">',
+        '<div class="saved-item-header">',
+        '<div class="saved-item-title-row">',
+        '<button class="expand-icon" onclick="toggleExpand(', i, ')">',
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
+        '<path d="M6 9l6 6 6-6"/>',
+        '</svg>',
+        '</button>',
+        '<div class="saved-item-name">', escapeHtml(mark.name), '</div>',
+        '<div class="saved-item-scale">', mark.rootNote, scaleName, '</div>',
+        '<div class="drag-handle" title="拖拽排序或拖入分类">',
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
+        '<line x1="9" y1="8" x2="15" y2="8"/>',
+        '<line x1="9" y1="12" x2="15" y2="12"/>',
+        '<line x1="9" y1="16" x2="15" y2="16"/>',
+        '</svg>',
+        '</div>',
+        '</div>',
+        '<div class="saved-item-frets">第 ', mark.minFret, ' - ', mark.maxFret, ' 品</div>',
+        '</div>',
+        '<div class="saved-item-detail" id="detail-', i, '" style="display: block;">',
+        miniFretboard,
+        '<div class="saved-item-actions">',
+        '<button class="saved-item-btn view" onclick="viewSavedMark(', i, ')" title="预览">',
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
+        '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>',
+        '<circle cx="12" cy="12" r="3"/>',
+        '</svg>',
+        '</button>',
+        '<button class="saved-item-btn edit" onclick="editSavedMark(', i, ')" title="编辑">',
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
+        '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
+        '</svg>',
+        '</button>',
+        '<button class="saved-item-btn move" onclick="moveMarkToFolder(', i, ')" title="移动到分类">',
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
+        '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+        '<polyline points="9 14 12 17 15 14"/>',
+        '<line x1="12" y1="11" x2="12" y2="17"/>',
+        '</svg>',
+        '</button>',
+        '<button class="saved-item-btn delete" onclick="confirmDelete(', i, ')" title="删除">',
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
+        '<path d="M3 6h18"/>',
+        '<path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>',
+        '<path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+        '</svg>',
+        '</button>',
+        '</div>',
+        '</div>',
+        '</div>'
+    ].join('');
+}
+
+// 文件夹操作
+function createFolder(parentId) {
+    if (parentId === undefined) parentId = ROOT_FOLDER_ID;
+    const depth = getFolderDepth(parentId) + 1;
+    if (depth > MAX_FOLDER_DEPTH) {
+        showToast('已达到最大分类层级（' + MAX_FOLDER_DEPTH + ' 层）', 'error');
+        return;
     }
-    
-    savedList.innerHTML = items.join('');
+    showPromptModal('输入分类名称:', '新分类', (name) => {
+        if (!name || !name.trim()) return;
+        const folder = {
+            id: generateFolderId(),
+            name: name.trim(),
+            expanded: true,
+            parentId: parentId
+        };
+        savedFolders.push(folder);
+        saveSavedFolders();
+        renderSavedList();
+        showToast('分类创建成功', 'success');
+    });
+}
+
+function createSubFolder(parentId) {
+    createFolder(parentId);
+}
+
+function renameFolder(folderId) {
+    const folder = savedFolders.find(f => f.id === folderId);
+    if (!folder) return;
+    showPromptModal('输入新名称:', folder.name, (newName) => {
+        if (newName && newName.trim()) {
+            folder.name = newName.trim();
+            saveSavedFolders();
+            renderSavedList();
+            showToast('重命名成功', 'success');
+        }
+    });
+}
+
+function toggleFolder(folderId) {
+    const folder = savedFolders.find(f => f.id === folderId);
+    if (!folder) return;
+    folder.expanded = folder.expanded === false;
+    saveSavedFolders();
+    renderSavedList();
+}
+
+function confirmDeleteFolder(folderId) {
+    const folder = savedFolders.find(f => f.id === folderId);
+    if (!folder) return;
+
+    const childFolders = getChildFolders(folderId);
+    const items = getMarksInFolder(folderId);
+    const total = childFolders.length + items.length;
+
+    if (total === 0) {
+        deleteFolder(folderId, false);
+        return;
+    }
+    const msg = `分类「${folder.name}」中有 ${total} 项内容。\n删除分类后，其中的内容将上移到上级分类。确认删除？`;
+    showConfirmModal(msg, () => deleteFolder(folderId, true));
+}
+
+function deleteFolder(folderId, cascade) {
+    const childFolders = getChildFolders(folderId);
+    childFolders.forEach(child => deleteFolder(child.id, true));
+
+    if (cascade) {
+        // 文件夹被删除，其下项上移到父级
+        const folder = savedFolders.find(f => f.id === folderId);
+        const parentId = folder ? folder.parentId : ROOT_FOLDER_ID;
+        savedMarks.forEach(mark => {
+            if (mark.folderId === folderId) {
+                mark.folderId = parentId;
+            }
+        });
+    }
+
+    const idx = savedFolders.findIndex(f => f.id === folderId);
+    if (idx >= 0) savedFolders.splice(idx, 1);
+    saveSavedFolders();
+    saveSavedMarks();
+    renderSavedList();
+    showToast('分类已删除', 'success');
+}
+
+// 移动项到分类（通过弹窗选择）
+function moveMarkToFolder(index) {
+    showFolderPickerModal('选择目标分类:', (targetFolderId) => {
+        if (targetFolderId === null) return;
+        savedMarks[index].folderId = targetFolderId;
+        saveSavedMarks();
+        renderSavedList();
+        showToast('已移动到分类', 'success');
+    });
+}
+
+// ===== 文件夹拖拽移动 =====
+let draggedFolderId = null;
+
+function folderDragStart(event, folderId) {
+    draggedFolderId = folderId;
+    draggedIndex = null;
+    event.dataTransfer.effectAllowed = 'move';
+    try { event.dataTransfer.setData('text/plain', 'folder:' + folderId); } catch (e) {}
+    const header = event.currentTarget;
+    header.classList.add('dragging-source');
+}
+
+function folderDragEnd() {
+    draggedFolderId = null;
+    document.querySelectorAll('.folder-block.drag-over').forEach(el => el.classList.remove('drag-over'));
+    document.querySelectorAll('.folder-header.dragging-source').forEach(el => el.classList.remove('dragging-source'));
+}
+
+// 判断 maybeDescendantId 是否位于 ancestorId 的子树中（含自身）
+function isDescendantFolder(maybeDescendantId, ancestorId) {
+    let current = maybeDescendantId;
+    const guard = new Set();
+    while (current && current !== ROOT_FOLDER_ID && !guard.has(current)) {
+        if (current === ancestorId) return true;
+        guard.add(current);
+        const f = savedFolders.find(x => x.id === current);
+        if (!f) break;
+        current = f.parentId;
+    }
+    return false;
+}
+
+// 移动文件夹到新父级，含层级/循环校验，成功返回 true
+function moveFolder(folderId, newParentId) {
+    if (folderId === newParentId) {
+        showToast('不能移动到分类自身', 'error');
+        return false;
+    }
+    const folder = savedFolders.find(f => f.id === folderId);
+    if (!folder) return false;
+    // 父级未变化：静默返回
+    if ((folder.parentId || ROOT_FOLDER_ID) === newParentId) return true;
+    // 不能移动到自己的后代中（防止循环）
+    if (newParentId !== ROOT_FOLDER_ID && isDescendantFolder(newParentId, folderId)) {
+        showToast('不能移动到自身的子分类中', 'error');
+        return false;
+    }
+    // 层级校验：移动后深度 = 目标父级深度 + 1；子树最大深度不得超过 MAX_FOLDER_DEPTH
+    const targetParentDepth = newParentId === ROOT_FOLDER_ID ? 0 : getFolderDepth(newParentId);
+    const newDepth = targetParentDepth + 1;
+    const hasChildFolder = getChildFolders(folderId).length > 0;
+    const subtreeMaxDepth = newDepth + (hasChildFolder ? 1 : 0);
+    if (subtreeMaxDepth > MAX_FOLDER_DEPTH) {
+        showToast('已达到最大分类层级（' + MAX_FOLDER_DEPTH + ' 层）', 'error');
+        return false;
+    }
+    folder.parentId = newParentId;
+    folder.expanded = true;
+    saveSavedFolders();
+    renderSavedList();
+    showToast('分类已移动', 'success');
+    return true;
+}
+
+function handleFolderDrop(event, folderId) {
+    const folderBlock = event.target.closest('.folder-block');
+    let targetParentId;
+    if (!folderBlock || folderBlock.classList.contains('root-folder')) {
+        targetParentId = ROOT_FOLDER_ID;
+    } else {
+        targetParentId = folderBlock.dataset.folderId || ROOT_FOLDER_ID;
+    }
+    moveFolder(folderId, targetParentId);
+}
+
+// 通过弹窗移动文件夹（排除自身及后代）
+function moveFolderPrompt(folderId) {
+    showFolderPickerModal('选择移动到的分类:', (targetId) => {
+        if (targetId === null) return;
+        moveFolder(folderId, targetId);
+    }, [folderId]);
+}
+
+// 更新保存目标下拉框
+function updateSaveTargetFolderOptions() {
+    const select = document.getElementById('saveTargetFolder');
+    if (!select) return;
+    const currentValue = currentSaveFolderId;
+    const options = ['<option value="', ROOT_FOLDER_ID, '">未分类</option>'];
+    const topLevelFolders = getChildFolders(ROOT_FOLDER_ID);
+    topLevelFolders.forEach(folder => {
+        options.push('<option value="', folder.id, '">', escapeHtml(folder.name), '</option>');
+        const subFolders = getChildFolders(folder.id);
+        subFolders.forEach(sub => {
+            options.push('<option value="', sub.id, '">-- ', escapeHtml(sub.name), '</option>');
+        });
+    });
+    select.innerHTML = options.join('');
+    if (savedMarks.some(m => m.folderId === currentValue) || currentValue === ROOT_FOLDER_ID || savedFolders.some(f => f.id === currentValue)) {
+        select.value = currentValue;
+    } else {
+        select.value = ROOT_FOLDER_ID;
+        currentSaveFolderId = ROOT_FOLDER_ID;
+    }
+}
+
+// 文件夹选择弹窗（用于"移动到"操作，excludeIds 中的文件夹及其后代将被排除）
+function showFolderPickerModal(title, callback, excludeIds = []) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    // 收集需要排除的文件夹（自身 + 所有后代）
+    const excluded = new Set();
+    const collectExcluded = (id) => {
+        excluded.add(id);
+        getChildFolders(id).forEach(c => collectExcluded(c.id));
+    };
+    excludeIds.forEach(collectExcluded);
+
+    const folderOptions = [
+        { id: ROOT_FOLDER_ID, name: '未分类 / 顶级', depth: 0 }
+    ];
+    const collect = (parentId, depth) => {
+        savedFolders.filter(f => f.parentId === parentId && !excluded.has(f.id)).forEach(f => {
+            folderOptions.push({ id: f.id, name: f.name, depth: depth });
+            collect(f.id, depth + 1);
+        });
+    };
+    collect(ROOT_FOLDER_ID, 1);
+
+    const optionsHtml = folderOptions.map(opt => {
+        const indent = '&nbsp;'.repeat(opt.depth * 4);
+        return `<option value="${opt.id}">${indent}${escapeHtml(opt.name)}</option>`;
+    }).join('');
+
+    modal.innerHTML = `
+        <div class="modal-content">
+            <h3>${title}</h3>
+            <select class="folder-picker-select">${optionsHtml}</select>
+            <div class="modal-buttons">
+                <button class="modal-btn cancel">取消</button>
+                <button class="modal-btn confirm">确定</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const select = modal.querySelector('.folder-picker-select');
+    modal.querySelector('.cancel').onclick = () => {
+        modal.remove();
+        callback(null);
+    };
+    modal.querySelector('.confirm').onclick = () => {
+        const value = select.value;
+        modal.remove();
+        callback(value);
+    };
+    modal.onclick = (e) => {
+        if (e.target === modal) {
+            modal.remove();
+            callback(null);
+        }
+    };
 }
 
 function viewSavedMark(index) {
@@ -754,33 +1247,48 @@ function viewSavedMark(index) {
     currentState.accidental = accidentalToSet;
     document.querySelector(`input[name="accidental"][value="${accidentalToSet}"]`).checked = true;
     updateNoteButtons();
-    
+
+    // 同步标注方式（音名/级数/音程）
+    if (mark.labels) {
+        currentState.labels = mark.labels;
+        const labelRadio = document.querySelector(`input[name="labels"][value="${mark.labels}"]`);
+        if (labelRadio) labelRadio.checked = true;
+    }
+
     let noteBtn = document.querySelector(`.note-btn[data-note="${noteToSelect}"]`);
     if (noteBtn) {
         noteBtn.classList.add('active');
         currentState.rootNote = rootNote;
     }
-    
+
     renderFretboard();
     updateScaleInfo();
 }
 
 function editSavedMark(index) {
     const mark = savedMarks[index];
-    currentState.markedNotes = { ...mark.marks };
+    // 先加载完整预览状态（标记颜色、根音、音阶、调弦、升降号、标注方式并重绘指板）
+    viewSavedMark(index);
     currentState.editingIndex = index;
     document.getElementById('saveName').value = mark.name;
     document.getElementById('saveMinFret').value = mark.minFret;
     document.getElementById('saveMaxFret').value = mark.maxFret;
+    // 同步目标文件夹下拉框
+    currentSaveFolderId = mark.folderId || ROOT_FOLDER_ID;
+    updateSaveTargetFolderOptions();
+    const targetSelect = document.getElementById('saveTargetFolder');
+    if (targetSelect) targetSelect.value = currentSaveFolderId;
+    // 自动切换到"当前标记"页，展示已标记的音
     document.querySelector('.tab[data-tab="current"]').click();
     const saveButton = document.getElementById('saveButton');
     saveButton.textContent = '保存修改';
+    showToast('已加载标记，可直接点击指板修改', 'success');
 }
 
 function confirmDelete(index) {
-    if (confirm(`确定要删除「${savedMarks[index].name}」吗？`)) {
+    showConfirmModal(`确定要删除「${savedMarks[index].name}」吗？`, () => {
         deleteSavedMark(index);
-    }
+    });
 }
 
 function toggleExpand(index) {
@@ -793,6 +1301,216 @@ function toggleExpand(index) {
         detail.style.display = 'none';
         icon.style.transform = 'rotate(0deg)';
     }
+}
+
+let draggedIndex = null;
+
+function showConfirmModal(message, onConfirm) {
+    const modal = document.createElement('div');
+    modal.className = 'confirm-modal';
+    modal.innerHTML = `
+        <div class="confirm-modal-content">
+            <div class="confirm-modal-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+            </div>
+            <p>${escapeHtml(message)}</p>
+            <div class="confirm-modal-buttons">
+                <button class="confirm-cancel">取消</button>
+                <button class="confirm-ok">确定</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    
+    modal.querySelector('.confirm-ok').addEventListener('click', () => {
+        onConfirm();
+        document.body.removeChild(modal);
+    });
+    
+    modal.querySelector('.confirm-cancel').addEventListener('click', () => {
+        document.body.removeChild(modal);
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            document.body.removeChild(modal);
+        }
+    });
+}
+
+function showPromptModal(message, defaultValue, onConfirm) {
+    const modal = document.createElement('div');
+    modal.className = 'prompt-modal';
+    modal.innerHTML = `
+        <div class="prompt-modal-content">
+            <h3>${escapeHtml(message)}</h3>
+            <input type="text" class="prompt-input" value="${escapeHtml(defaultValue || '')}">
+            <div class="prompt-modal-buttons">
+                <button class="prompt-cancel">取消</button>
+                <button class="prompt-ok">确定</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    
+    modal.querySelector('.prompt-ok').addEventListener('click', () => {
+        const value = modal.querySelector('.prompt-input').value;
+        onConfirm(value);
+        document.body.removeChild(modal);
+    });
+    
+    modal.querySelector('.prompt-cancel').addEventListener('click', () => {
+        onConfirm(null);
+        document.body.removeChild(modal);
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            onConfirm(null);
+            document.body.removeChild(modal);
+        }
+    });
+    
+    modal.querySelector('.prompt-input').focus();
+}
+
+// 聚焦并定位到某条记录的内联备注文本框（替代原中央弹窗）
+function editNote(index) {
+    const mark = savedMarks[index];
+    if (!mark) return;
+
+    // 若所在分类处于折叠状态，先逐级展开
+    let changed = false;
+    let cur = mark.folderId || ROOT_FOLDER_ID;
+    const ancestors = [];
+    while (cur && cur !== ROOT_FOLDER_ID) {
+        const f = savedFolders.find(x => x.id === cur);
+        if (!f) break;
+        ancestors.push(f);
+        cur = f.parentId;
+    }
+    ancestors.forEach(f => {
+        if (f.expanded === false) { f.expanded = true; changed = true; }
+    });
+    if (changed) {
+        saveSavedFolders();
+        renderSavedList();
+    }
+
+    const ta = document.querySelector('.mini-chord-note-input[data-index="' + index + '"]');
+    if (!ta) return;
+    // 无备注时先展开 textarea（移除隐藏类）
+    ta.classList.remove('note-empty');
+    autoGrowNoteInput(ta);
+    ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => {
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+    }, 350);
+}
+
+// 备注文本框自动增高
+function autoGrowNoteInput(ta) {
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+}
+
+// 失焦自动保存备注（局部更新，不重绘列表）
+function saveNoteFromTextarea(ta) {
+    const idx = parseInt(ta.dataset.index);
+    if (isNaN(idx) || !savedMarks[idx]) return;
+    const newNote = ta.value.trim();
+    const oldNote = savedMarks[idx].note || '';
+    // 内容为空时隐藏文本框（无论是否变化）
+    if (newNote === '') {
+        ta.classList.add('note-empty');
+    }
+    if (newNote === oldNote) return;
+    savedMarks[idx].note = newNote;
+    saveSavedMarks();
+    // 局部更新 + 按钮高亮状态，避免整列表重绘造成抖动
+    const item = ta.closest('.saved-item');
+    if (item) {
+        const btn = item.querySelector('.mini-note-btn');
+        if (btn) {
+            btn.classList.toggle('has-note', newNote !== '');
+            btn.title = newNote !== '' ? '编辑备注' : '添加备注';
+        }
+    }
+    showToast('备注已保存', 'success');
+}
+
+function dragStart(event) {
+    draggedIndex = parseInt(event.target.dataset.index);
+    draggedFolderId = null;
+    event.target.style.opacity = '0.5';
+    event.dataTransfer.effectAllowed = 'move';
+}
+
+function dragOver(event) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    // 清空所有高亮，仅高亮当前文件夹
+    document.querySelectorAll('.folder-block.drag-over').forEach(el => el.classList.remove('drag-over'));
+    const folderBlock = event.target.closest('.folder-block');
+    if (folderBlock) {
+        // 拖动文件夹时，不高亮其自身
+        if (draggedFolderId && folderBlock.dataset.folderId === draggedFolderId) return;
+        folderBlock.classList.add('drag-over');
+    }
+}
+
+function drop(event) {
+    event.preventDefault();
+    document.querySelectorAll('.folder-block.drag-over').forEach(el => el.classList.remove('drag-over'));
+
+    // 文件夹拖拽
+    if (draggedFolderId) {
+        handleFolderDrop(event, draggedFolderId);
+        draggedFolderId = null;
+        return;
+    }
+
+    if (draggedIndex === null) return;
+
+    // 优先判断是否拖入文件夹区块
+    const folderBlock = event.target.closest('.folder-block');
+    if (folderBlock) {
+        let targetFolderId;
+        if (folderBlock.classList.contains('root-folder')) {
+            targetFolderId = ROOT_FOLDER_ID;
+        } else {
+            targetFolderId = folderBlock.dataset.folderId || ROOT_FOLDER_ID;
+        }
+        savedMarks[draggedIndex].folderId = targetFolderId;
+        saveSavedMarks();
+        renderSavedList();
+        showToast('已移动到分类', 'success');
+        draggedIndex = null;
+        return;
+    }
+
+    // 拖入到其他项：保留原数组顺序交换逻辑，并同步 folderId
+    const target = event.target.closest('.saved-item');
+    if (!target) {
+        draggedIndex = null;
+        return;
+    }
+    const dropIndex = parseInt(target.dataset.index);
+    if (draggedIndex !== dropIndex) {
+        const targetFolderId = savedMarks[dropIndex].folderId || ROOT_FOLDER_ID;
+        const draggedItem = savedMarks.splice(draggedIndex, 1)[0];
+        draggedItem.folderId = targetFolderId;
+        savedMarks.splice(dropIndex, 0, draggedItem);
+        saveSavedMarks();
+        renderSavedList();
+    }
+
+    draggedIndex = null;
 }
 
 function escapeHtml(str) {
@@ -842,25 +1560,32 @@ function saveCurrentMarks() {
         rootNote: currentState.rootNote,
         scale: currentState.scale,
         tuning: currentState.tuning,
+        labels: currentState.labels,
+        note: '',
+        folderId: currentSaveFolderId,
         createdAt: Date.now()
     };
-    
+
     if (currentState.editingIndex !== null) {
+        // 编辑时保留原 note 与 folderId（如果用户改了下拉框，使用新的）
+        markData.note = savedMarks[currentState.editingIndex].note || '';
+        markData.folderId = currentSaveFolderId;
         savedMarks[currentState.editingIndex] = markData;
         showToast('修改成功！', 'success');
     } else {
         savedMarks.push(markData);
         showToast('保存成功！', 'success');
     }
-    
+
     saveSavedMarks();
-    
+
     document.getElementById('saveName').value = '';
     document.getElementById('saveMinFret').value = '0';
     document.getElementById('saveMaxFret').value = '22';
-    
+
     currentState.editingIndex = null;
     document.getElementById('saveButton').textContent = '保存';
+    renderSavedList();
 }
 
 function showToast(message, type = 'success') {
@@ -880,20 +1605,21 @@ function showToast(message, type = 'success') {
 }
 
 function renameSavedMark(index) {
-    const newName = prompt('输入新名称:', savedMarks[index].name);
-    if (newName && newName.trim()) {
-        savedMarks[index].name = newName.trim();
-        saveSavedMarks();
-        renderSavedList();
-    }
+    showPromptModal('输入新名称:', savedMarks[index].name, (newName) => {
+        if (newName && newName.trim()) {
+            savedMarks[index].name = newName.trim();
+            saveSavedMarks();
+            renderSavedList();
+        }
+    });
 }
 
 function deleteSavedMark(index) {
-    if (confirm('确定要删除这个保存的标记吗？')) {
+    showConfirmModal('确定要删除这个保存的标记吗？', () => {
         savedMarks.splice(index, 1);
         saveSavedMarks();
         renderSavedList();
-    }
+    });
 }
 
 function initTabListeners() {
@@ -1073,9 +1799,60 @@ function initEventListeners() {
     
     document.getElementById('saveButton').addEventListener('click', saveCurrentMarks);
     document.getElementById('clearButton').addEventListener('click', clearMarks);
-    
+
+    const newFolderBtn = document.getElementById('newFolderBtn');
+    if (newFolderBtn) {
+        newFolderBtn.addEventListener('click', () => createFolder(ROOT_FOLDER_ID));
+    }
+
+    const saveTargetFolder = document.getElementById('saveTargetFolder');
+    if (saveTargetFolder) {
+        saveTargetFolder.addEventListener('change', (e) => {
+            currentSaveFolderId = e.target.value || ROOT_FOLDER_ID;
+        });
+    }
+
+    // 内联备注文本框：失焦自动保存 / Esc 取消 / Ctrl+Enter 保存 / 输入自动增高
+    const savedListEl = document.getElementById('savedList');
+    if (savedListEl) {
+        savedListEl.addEventListener('focusout', (e) => {
+            const ta = e.target.closest && e.target.closest('.mini-chord-note-input');
+            if (ta) saveNoteFromTextarea(ta);
+        });
+        savedListEl.addEventListener('keydown', (e) => {
+            const ta = e.target.closest && e.target.closest('.mini-chord-note-input');
+            if (!ta) return;
+            if (e.key === 'Escape') {
+                const idx = parseInt(ta.dataset.index);
+                const restoredNote = (savedMarks[idx] && savedMarks[idx].note) || '';
+                ta.value = restoredNote;
+                autoGrowNoteInput(ta);
+                // 取消后若原备注为空，再次隐藏文本框
+                if (restoredNote === '') ta.classList.add('note-empty');
+                ta.blur();
+            } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                ta.blur();
+            }
+        });
+        savedListEl.addEventListener('input', (e) => {
+            const ta = e.target.closest && e.target.closest('.mini-chord-note-input');
+            if (ta) autoGrowNoteInput(ta);
+        });
+    }
+
     initTabListeners();
     initContextMenu();
+
+    document.querySelectorAll('.layout-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.layout-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const columns = parseInt(btn.dataset.columns) || 3;
+            currentColumns = columns;
+            renderSavedList();
+        });
+    });
 }
 
 function clearMarks() {

@@ -99,11 +99,56 @@
                         <input type="number" id="saveMinFret" placeholder="起始品" min="0" max="22" value="0">
                         <span class="fret-separator">-</span>
                         <input type="number" id="saveMaxFret" placeholder="结束品" min="0" max="22" value="22">
+                        <select id="saveTargetFolder" class="save-target-folder" title="保存到分类">
+                            <option value="root">未分类</option>
+                        </select>
                         <button id="saveButton">保存</button>
                     </div>
                 </div>
                 
                 <div class="tab-panel" id="savedPanel">
+                    <div class="saved-panel-header">
+                        <button id="newFolderBtn" class="folder-create-btn" title="新建分类">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                                <line x1="12" y1="11" x2="12" y2="17"/>
+                                <line x1="9" y1="14" x2="15" y2="14"/>
+                            </svg>
+                            <span>新建分类</span>
+                        </button>
+                        <div class="layout-controls">
+                            <button class="layout-btn" data-columns="1" title="1列">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="3" y="3" width="18" height="6" rx="2"/>
+                                    <rect x="3" y="11" width="18" height="6" rx="2"/>
+                                    <rect x="3" y="19" width="18" height="6" rx="2"/>
+                                </svg>
+                            </button>
+                            <button class="layout-btn" data-columns="2" title="2列">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="3" y="3" width="8" height="6" rx="2"/>
+                                    <rect x="13" y="3" width="8" height="6" rx="2"/>
+                                    <rect x="3" y="11" width="8" height="6" rx="2"/>
+                                    <rect x="13" y="11" width="8" height="6" rx="2"/>
+                                    <rect x="3" y="19" width="8" height="6" rx="2"/>
+                                    <rect x="13" y="19" width="8" height="6" rx="2"/>
+                                </svg>
+                            </button>
+                            <button class="layout-btn active" data-columns="3" title="3列">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="3" y="3" width="5" height="6" rx="2"/>
+                                    <rect x="9.5" y="3" width="5" height="6" rx="2"/>
+                                    <rect x="16" y="3" width="5" height="6" rx="2"/>
+                                    <rect x="3" y="11" width="5" height="6" rx="2"/>
+                                    <rect x="9.5" y="11" width="5" height="6" rx="2"/>
+                                    <rect x="16" y="11" width="5" height="6" rx="2"/>
+                                    <rect x="3" y="19" width="5" height="6" rx="2"/>
+                                    <rect x="9.5" y="19" width="5" height="6" rx="2"/>
+                                    <rect x="16" y="19" width="5" height="6" rx="2"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
                     <div id="savedList">
                         <div class="empty-state">暂无保存的标记</div>
                     </div>
